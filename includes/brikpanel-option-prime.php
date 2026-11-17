@@ -71,6 +71,8 @@ function brikpanel_prime_keys_always() {
 		'brikpanel_cartab_enabled',
 		'brikpanel_vendors_enabled',
 		'brikpanel_cart_share_enabled',
+		// Customer returns (front-end/returns/brikpanel-returns.php, file scope).
+		'brikpanel_returns_enabled',
 		// Automatic coupons' index (front-end/coupons/brikpanel-auto-coupons.php),
 		// read whenever a cart loads; most stores never write it.
 		'brikpanel_auto_coupons',
@@ -207,6 +209,10 @@ function brikpanel_prime_keys_admin() {
 		'brikpanel_ea_last_flush',
 		'brikpanel_ea_subscribed',
 		'brikpanel_bm_live_card_dismissed',
+
+		// Customer returns: the menu bubble and the top bar count read it on
+		// every admin screen (front-end/returns/class-brikpanel-returns-store.php).
+		'brikpanel_returns_counts',
 
 		// Topbar rendering (in_admin_header on every admin screen).
 		'brikpanel_topbar_hidden_items',
@@ -399,6 +405,7 @@ function brikpanel_option_autoload_denylist() {
 		'brikpanel_gs_orders_custom_fields'             => 'multi-KB, unbounded',
 		'brikpanel_gs_expenses_state'                   => 'multi-KB and write-hot',
 		'brikpanel_gs_products_push_queue'              => 'queue, write-hot',
+		'brikpanel_gs_orders_update_queue'              => 'queue, write-hot',
 		'brikpanel_ea_outbox'                           => 'queue, write-hot',
 		'brikpanel_nav_config'                          => 'grows with the menu',
 		'brikpanel_pe_section_order'                    => 'unbounded, screen-scoped',

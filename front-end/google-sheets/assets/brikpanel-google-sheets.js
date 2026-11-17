@@ -874,7 +874,15 @@
 	// ---------------------------------------------------------------------
 	// Status pill polling (only when connected)
 	// ---------------------------------------------------------------------
+	// A tab left open in the background asked the server every 30 seconds,
+	// all day, for a pill nobody was looking at; on shared hosting each ask
+	// is a whole WordPress start. Hidden tabs skip the ask and check once on
+	// coming back, if the last check is older than one interval.
+	var POLL_MS = 30000;
+	var lastPoll = Date.now();
 	function pollStatus() {
+		if (document.hidden) { return; }
+		lastPoll = Date.now();
 		ajax('brikpanel_gs_status').then(function (s) {
 			var pill = document.getElementById('bp-gs-pill');
 			if (!pill) { return; }
@@ -903,7 +911,12 @@
 		}).catch(function () { /* silent */ });
 	}
 	if (root.getAttribute('data-connected') === '1') {
-		setInterval(pollStatus, 30000);
+		setInterval(pollStatus, POLL_MS);
+		document.addEventListener('visibilitychange', function () {
+			if (!document.hidden && Date.now() - lastPoll >= POLL_MS) {
+				pollStatus();
+			}
+		});
 	}
 
 })();

@@ -51,7 +51,7 @@ class Brikpanel_Sheets_Products_Sync {
 	const OPT_ENABLED       = 'brikpanel_gs_products_enabled';
 	const OPT_TAB_NAME      = 'brikpanel_gs_products_tab';
 	const OPT_PULL_ENABLED  = 'brikpanel_gs_products_pull_enabled';
-	const OPT_PULL_INTERVAL = 'brikpanel_gs_products_pull_interval'; // 2|5|15 (minutes)
+	const OPT_PULL_INTERVAL = 'brikpanel_gs_products_pull_interval'; // 2|5|15 (minutes) or manual
 	const OPT_LAST_PUSH     = 'brikpanel_gs_products_last_push';
 	const OPT_LAST_PULL     = 'brikpanel_gs_products_last_pull';
 	const OPT_PUSH_QUEUE    = 'brikpanel_gs_products_push_queue';   // {product_id => 1} pending push
@@ -112,6 +112,16 @@ class Brikpanel_Sheets_Products_Sync {
 			case '5':
 			default:   return 5 * MINUTE_IN_SECONDS;
 		}
+	}
+
+	/**
+	 * "Manual only": two-way sync stays on, but nothing reads the sheet on a
+	 * schedule. The merchant's "Pull now" brings the edits in.
+	 *
+	 * @return bool
+	 */
+	public static function pull_is_manual() {
+		return 'manual' === (string) get_option( self::OPT_PULL_INTERVAL, '5' );
 	}
 
 	/**
@@ -323,10 +333,11 @@ class Brikpanel_Sheets_Products_Sync {
 			static function () { return [ 'label' => __( 'Sheets: pull product changes from Google Sheets', 'brikpanel' ) ]; }
 		);
 
-		// Schedule the pull only when both the flow AND the pull half are on.
+		// Schedule the pull only when both the flow AND the pull half are on,
+		// and the merchant did not choose to pull by hand.
 		// Push has no standalone schedule — it's event-driven via product hooks
 		// (debounced through enqueue_async) plus the manual "Sync now" button.
-		if ( self::is_enabled() && self::pull_enabled() ) {
+		if ( self::is_enabled() && self::pull_enabled() && ! self::pull_is_manual() ) {
 			Brikpanel_Cron::schedule_recurring( self::HOOK_PULL, self::pull_interval_seconds(), [] );
 		} else {
 			Brikpanel_Cron::cancel( self::HOOK_PULL );
@@ -1035,6 +1046,21 @@ class Brikpanel_Sheets_Products_Sync {
 			? array_keys( wc_get_product_stock_status_options() )
 			: [ 'instock', 'outofstock', 'onbackorder' ];
 
+		// Which rows belong to a product that still exists, and the snapshot of
+		// what was last pushed for it, in one query per thousand rows. Until
+		// 3.3.49 every row loaded its product before anything was compared: a
+		// Products tab of 18,276 rows (17,811 of them products deleted since)
+		// cost 91,057 queries and 45 MB on every poll, to change nothing.
+		$row_ids = [];
+		foreach ( $rows as $row ) {
+			$id = isset( $row[ $pid_col ] ) ? (int) $row[ $pid_col ] : 0;
+			if ( $id > 0 ) {
+				$row_ids[] = $id;
+			}
+		}
+		$snapshots = self::snapshot_prefetch( $row_ids );
+		$col_count = count( $columns );
+
 		foreach ( $rows as $row_index => $row ) {
 			// One row must not stop the pull: a product another plugin's save
 			// hook throws on, or a value WooCommerce refuses, is logged and the
@@ -1044,14 +1070,15 @@ class Brikpanel_Sheets_Products_Sync {
 				$product_id = isset( $row[ $pid_col ] ) ? (int) $row[ $pid_col ] : 0;
 				if ( $product_id <= 0 ) { continue; }
 
-				$product = wc_get_product( $product_id );
-				if ( ! $product ) { continue; }
+				// No product behind the id (deleted since the push, or never
+				// one): wc_get_product() would find nothing either.
+				if ( ! isset( $snapshots[ $product_id ] ) ) { continue; }
 
 				$checked++;
 
 				// Snapshot check first — if nothing in the row differs from what
-				// we last pushed, there's nothing to do; bail out before paying
-				// for the conflict-detection meta reads.
+				// we last pushed, there's nothing to do; bail out before loading
+				// the product at all.
 				//
 				// Pad the pulled row back to the full column count before hashing:
 				// the Sheets API omits trailing empty cells, so a row whose last
@@ -1060,13 +1087,21 @@ class Brikpanel_Sheets_Products_Sync {
 				// push time. Without this, every such row hashes differently on every
 				// pull and gets needlessly re-queued for push — constant churn on a
 				// catalogue with many blank trailing cells.
-				$snapshot_hash = (string) $this->get_product_meta( $product, self::META_SNAPSHOT_HASH );
-				$row_values    = array_values( $row );
-				$col_count     = count( $columns );
+				$row_values = array_values( $row );
 				if ( count( $row_values ) < $col_count ) {
 					$row_values = array_pad( $row_values, $col_count, '' );
 				}
 				$row_hash      = self::hash_row( $row_values );
+				$snapshot_hash = (string) $snapshots[ $product_id ];
+				if ( $snapshot_hash !== '' && $snapshot_hash === $row_hash ) {
+					continue;
+				}
+
+				$product = wc_get_product( $product_id );
+				if ( ! $product ) { continue; }
+
+				// The product's own copy of the snapshot decides from here, as before.
+				$snapshot_hash = (string) $this->get_product_meta( $product, self::META_SNAPSHOT_HASH );
 				if ( $snapshot_hash !== '' && $snapshot_hash === $row_hash ) {
 					continue;
 				}
@@ -1400,6 +1435,42 @@ class Brikpanel_Sheets_Products_Sync {
 		], false );
 
 		return [ 'checked' => $checked, 'applied' => $applied, 'conflicts' => $conflicts ];
+	}
+
+	/**
+	 * The last-pushed snapshot hash of each of these ids that is a product or a
+	 * variation: { id => hash, '' when it has none }. Ids that are not (gone,
+	 * or another kind of post) are absent.
+	 *
+	 * @param int[] $ids
+	 * @return array<int, string>
+	 */
+	private static function snapshot_prefetch( array $ids ) {
+		global $wpdb;
+		$out = [];
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static function ( $id ) {
+			return $id > 0;
+		} ) ) );
+		foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
+			$ph   = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound.
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT p.ID AS id, pm.meta_value AS snap
+				   FROM {$wpdb->posts} p
+				   LEFT JOIN {$wpdb->postmeta} pm ON pm.post_id = p.ID AND pm.meta_key = %s
+				  WHERE p.ID IN ({$ph}) AND p.post_type IN ( 'product', 'product_variation' )
+				  ORDER BY p.ID ASC, pm.meta_id ASC",
+				array_merge( [ self::META_SNAPSHOT_HASH ], $chunk )
+			) );
+			foreach ( (array) $rows as $r ) {
+				$id = (int) $r->id;
+				// The first value wins, as WC_Data::get_meta() reads it.
+				if ( ! isset( $out[ $id ] ) ) {
+					$out[ $id ] = null === $r->snap ? '' : (string) $r->snap;
+				}
+			}
+		}
+		return $out;
 	}
 
 	/**

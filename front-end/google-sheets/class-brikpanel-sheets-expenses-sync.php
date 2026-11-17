@@ -61,7 +61,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 	const OPT_ENABLED       = 'brikpanel_gs_expenses_enabled';
 	const OPT_TAB_NAME      = 'brikpanel_gs_expenses_tab';
 	const OPT_PULL_ENABLED  = 'brikpanel_gs_expenses_pull_enabled';
-	const OPT_PULL_INTERVAL = 'brikpanel_gs_expenses_pull_interval'; // 2|5|15 (minutes)
+	const OPT_PULL_INTERVAL = 'brikpanel_gs_expenses_pull_interval'; // 2|5|15 (minutes) or manual
 	const OPT_LAST_PUSH     = 'brikpanel_gs_expenses_last_push';
 	const OPT_LAST_PULL     = 'brikpanel_gs_expenses_last_pull';
 
@@ -117,6 +117,17 @@ class Brikpanel_Sheets_Expenses_Sync {
 	 * Pull cadence in seconds, clamped to the values the UI offers so a stray
 	 * option write cannot schedule a cadence the merchant never picked.
 	 */
+	/**
+	 * "Manual only": two-way sync stays on, but nothing reads the sheet on a
+	 * schedule. "Pull now" brings the rows in, and a push still reads the tab
+	 * first so a typed row is never wiped by the rebuild.
+	 *
+	 * @return bool
+	 */
+	public static function pull_is_manual() {
+		return 'manual' === (string) get_option( self::OPT_PULL_INTERVAL, '5' );
+	}
+
 	public static function pull_interval_seconds() {
 		switch ( (string) get_option( self::OPT_PULL_INTERVAL, '5' ) ) {
 			case '2':  return 2 * MINUTE_IN_SECONDS;
@@ -196,7 +207,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 		// Only the pull runs on a schedule. The push is event-driven (expense
 		// saved / deleted) plus the manual "Sync now" button — a periodic
 		// rebuild would rewrite the tab while somebody is typing into it.
-		if ( self::is_enabled() && self::pull_enabled() ) {
+		if ( self::is_enabled() && self::pull_enabled() && ! self::pull_is_manual() ) {
 			Brikpanel_Cron::schedule_recurring( self::HOOK_PULL, self::pull_interval_seconds(), [] );
 		} else {
 			Brikpanel_Cron::cancel( self::HOOK_PULL );
@@ -375,6 +386,34 @@ class Brikpanel_Sheets_Expenses_Sync {
 		) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
 	}
 
+	/**
+	 * The managed expenses with these ids, keyed by id: the same columns and
+	 * the same "recurring_parent = 0" rule as fetch_one().
+	 *
+	 * @param int[] $ids
+	 * @return array<int, object>
+	 */
+	private function fetch_many( array $ids ) {
+		global $wpdb;
+		$table = self::table();
+		$out   = [];
+		$ids   = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static function ( $id ) {
+			return $id > 0;
+		} ) ) );
+		foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
+			$ph   = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			$rows = $wpdb->get_results( $wpdb->prepare(
+				"SELECT id, expense_date, category, parent_category, description, amount, recurring, kind, created_at
+				   FROM {$table} WHERE recurring_parent = 0 AND id IN ({$ph})",
+				$chunk
+			) ); // phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared
+			foreach ( (array) $rows as $r ) {
+				$out[ (int) $r->id ] = $r;
+			}
+		}
+		return $out;
+	}
+
 	private function fetch_one( $id ) {
 		global $wpdb;
 		$table = self::table();
@@ -522,6 +561,18 @@ class Brikpanel_Sheets_Expenses_Sync {
 		$id_column   = [];   // row index => id, for the write-back below
 		$new_ids     = false;
 
+		// Every expense the rows name, read in one query per thousand instead
+		// of one query per row on every poll.
+		$row_ids = [];
+		foreach ( $rows as $raw_row ) {
+			$raw_row = array_values( (array) $raw_row );
+			$rid     = isset( $raw_row[ $id_col ] ) ? (int) $raw_row[ $id_col ] : 0;
+			if ( $rid > 0 ) {
+				$row_ids[] = $rid;
+			}
+		}
+		$existing = $this->fetch_many( $row_ids );
+
 		self::$ingesting = true;
 		try {
 			foreach ( $rows as $i => $raw_row ) {
@@ -566,7 +617,7 @@ class Brikpanel_Sheets_Expenses_Sync {
 					continue;
 				}
 
-				$current = $this->fetch_one( $id );
+				$current = isset( $existing[ $id ] ) ? $existing[ $id ] : null;
 				if ( ! $current ) {
 					// An ID that no longer exists (deleted in BrikPanel, or a
 					// generated occurrence somebody pasted in). Never resurrect
@@ -615,6 +666,9 @@ class Brikpanel_Sheets_Expenses_Sync {
 				if ( $this->update_expense( $id, $fields, $fields_in_sheet ) ) {
 					$out['updated']++;
 					$hashes[ $id ] = $sheet_sig;
+					// A second row with the same id must compare against what is
+					// stored now, as it did when every row read the table itself.
+					$existing[ $id ] = $this->fetch_one( $id );
 				} else {
 					$out['skipped']++;
 				}

@@ -1,0 +1,308 @@
+/*
+ * BrikPanel customer returns: My Account (storefront).
+ *
+ * Every rule is scoped to .brikpanel-return / .brikpanel-return-page so a
+ * theme's own styles stay in charge of fonts, colours and buttons. Borders and
+ * tints use currentColor so the block reads on light and dark themes alike.
+ */
+
+.brikpanel-return [hidden]:not([hidden="until-found"]),
+.brikpanel-return-page [hidden]:not([hidden="until-found"]) {
+	display: none !important;
+}
+
+.brikpanel-return,
+.brikpanel-return-page {
+	margin: 2em 0;
+}
+
+.brikpanel-return-page__title {
+	margin: 0 0 0.75em;
+}
+
+/* ── Requests ───────────────────────────────────────────────────────────── */
+
+.brikpanel-return__card {
+	margin: 0 0 1em;
+	padding: 1em 1.125em;
+	border: 1px solid rgba(128, 128, 128, 0.32);
+	border-color: color-mix(in srgb, currentColor 16%, transparent);
+	border-radius: 8px;
+}
+
+.brikpanel-return__head {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5em 0.75em;
+}
+
+.brikpanel-return__title {
+	margin: 0;
+	font-size: 1.05em;
+}
+
+.brikpanel-return__status {
+	display: inline-block;
+	padding: 0.15em 0.75em;
+	border-radius: 999px;
+	font-size: 0.8125em;
+	font-weight: 600;
+	line-height: 1.6;
+	background: #f1f1f1;
+	color: #303030;
+	white-space: nowrap;
+}
+
+.brikpanel-return__status.is-requested {
+	background: #fff1d6;
+	color: #7a5000;
+}
+
+.brikpanel-return__status.is-approved,
+.brikpanel-return__status.is-received,
+.brikpanel-return__status.is-resolving {
+	background: #e3edff;
+	color: #1d4ba0;
+}
+
+.brikpanel-return__status.is-refunded {
+	background: #e4f5e1;
+	color: #1a6b15;
+}
+
+.brikpanel-return__status.is-rejected {
+	background: #fce4e4;
+	color: #a61b1b;
+}
+
+.brikpanel-return__meta {
+	margin: 0.5em 0 0;
+	font-size: 0.9em;
+}
+
+.brikpanel-return__lines {
+	margin: 0.5em 0 0 1.25em;
+	padding: 0;
+}
+
+.brikpanel-return__message {
+	margin: 0.75em 0 0;
+	padding: 0.625em 0.875em;
+	border-inline-start: 3px solid rgba(128, 128, 128, 0.4);
+	border-inline-start-color: color-mix(in srgb, currentColor 22%, transparent);
+}
+
+.brikpanel-return__message p {
+	margin: 0.25em 0 0;
+}
+
+.brikpanel-return__cancel {
+	margin: 0.75em 0 0;
+}
+
+.brikpanel-return__link-button {
+	padding: 0;
+	border: 0;
+	background: none;
+	color: inherit;
+	font: inherit;
+	font-size: 0.9em;
+	text-decoration: underline;
+	text-underline-offset: 2px;
+	cursor: pointer;
+}
+
+.brikpanel-return__start,
+.brikpanel-return__note {
+	margin: 1em 0 0;
+}
+
+/* ── Form ───────────────────────────────────────────────────────────────── */
+
+.brikpanel-return__form,
+.brikpanel-return__lookup {
+	margin: 0 0 1em;
+	padding: 1.25em;
+	border: 1px solid rgba(128, 128, 128, 0.32);
+	border-color: color-mix(in srgb, currentColor 16%, transparent);
+	border-radius: 8px;
+}
+
+.brikpanel-return__form-title {
+	margin: 0 0 0.25em;
+}
+
+.brikpanel-return__lead {
+	margin: 0 0 1em;
+}
+
+.brikpanel-return__items,
+.brikpanel-return__reasons {
+	min-width: 0;
+	margin: 0 0 1.25em;
+	padding: 0;
+	border: 0;
+}
+
+.brikpanel-return__legend {
+	margin: 0 0 0.5em;
+	padding: 0;
+	font-weight: 600;
+}
+
+.brikpanel-return__item {
+	display: flex;
+	align-items: center;
+	gap: 0.75em;
+	padding: 0.625em 0;
+	border-bottom: 1px solid rgba(128, 128, 128, 0.22);
+	border-bottom-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.brikpanel-return__check {
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+.brikpanel-return__item-label {
+	display: flex;
+	flex: 1 1 auto;
+	align-items: center;
+	gap: 0.75em;
+	min-width: 0;
+	margin: 0;
+	cursor: pointer;
+}
+
+.brikpanel-return__thumb img {
+	display: block;
+	width: 48px;
+	height: 48px;
+	object-fit: cover;
+	border-radius: 6px;
+}
+
+.brikpanel-return__item-text {
+	display: flex;
+	flex-direction: column;
+	min-width: 0;
+	overflow-wrap: anywhere;
+}
+
+.brikpanel-return__item-meta {
+	font-size: 0.85em;
+}
+
+.brikpanel-return__qty {
+	flex: 0 0 auto;
+	margin: 0;
+}
+
+.brikpanel-return__qty select {
+	min-width: 4.5em;
+}
+
+.brikpanel-return__reason {
+	display: flex;
+	align-items: center;
+	gap: 0.5em;
+	margin: 0.375em 0;
+	cursor: pointer;
+}
+
+.brikpanel-return__reason input {
+	margin: 0;
+}
+
+.brikpanel-return__hint {
+	display: block;
+	margin-top: 0.25em;
+	font-size: 0.85em;
+}
+
+.brikpanel-return__photos input[type="file"] {
+	max-width: 100%;
+}
+
+/* WooCommerce pads .form-row by 3px (`.woocommerce form .form-row`, 0,2,1) and
+   keeps its label regular; the form's own headings (Items, Reason) sit flush and
+   bold, so the note and photo rows follow. Both classes sit on the form itself. */
+.brikpanel-return__form.woocommerce-form .form-row {
+	padding-inline: 0;
+}
+
+.brikpanel-return__form.woocommerce-form .form-row > label {
+	font-weight: 600;
+}
+
+.brikpanel-return__order-no {
+	font-weight: 600;
+}
+
+.brikpanel-return__actions {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	gap: 0.75em 1em;
+	margin: 1.25em 0 0;
+}
+
+.brikpanel-return__submit[aria-disabled="true"] {
+	opacity: 0.7;
+	cursor: progress;
+}
+
+.brikpanel-return__review th {
+	width: 30%;
+	text-align: start;
+}
+
+.brikpanel-return__review-line {
+	display: block;
+}
+
+/* ── Returns page ───────────────────────────────────────────────────────── */
+
+.brikpanel-return-page__orders {
+	margin: 0 0 1.5em;
+	padding: 0;
+	list-style: none;
+}
+
+.brikpanel-return-page__orders li {
+	display: flex;
+	flex-wrap: wrap;
+	align-items: center;
+	justify-content: space-between;
+	gap: 0.5em 1em;
+	padding: 0.625em 0;
+	border-bottom: 1px solid rgba(128, 128, 128, 0.22);
+	border-bottom-color: color-mix(in srgb, currentColor 10%, transparent);
+}
+
+.brikpanel-return-page__login {
+	margin: 1em 0 0;
+}
+
+/* Phones keep the quantity on the item's own row; the name wraps instead. */
+@media (max-width: 480px) {
+	.brikpanel-return__item,
+	.brikpanel-return__item-label {
+		gap: 0.5em;
+	}
+
+	.brikpanel-return__thumb img {
+		width: 40px;
+		height: 40px;
+	}
+
+	.brikpanel-return__qty select {
+		min-width: 4em;
+	}
+
+	.brikpanel-return__review th {
+		width: auto;
+	}
+}

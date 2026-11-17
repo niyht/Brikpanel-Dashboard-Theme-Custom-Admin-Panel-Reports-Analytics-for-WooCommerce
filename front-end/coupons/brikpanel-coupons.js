@@ -737,7 +737,7 @@
 
         return '<tr class="brikpanel-cp-row" data-id="' + c.id + '">' +
             '<td class="brikpanel-cp-cell-check"><input type="checkbox" class="brikpanel-cp-row-check brikpanel-cp-checkbox" value="' + c.id + '"' + checked + '></td>' +
-            '<td class="brikpanel-cp-cell-code brikpanel-fit-lead"><span class="brikpanel-cp-code-text">' + escHtml(c.code) + '</span>' + autoBadge + aseActionsHtml + '</td>' +
+            '<td class="brikpanel-cp-cell-code brikpanel-fit-lead"><span class="brikpanel-cp-code-text">' + escHtml(asciiUpper(c.code)) + '</span>' + autoBadge + aseActionsHtml + '</td>' +
             '<td class="brikpanel-cp-cell-type"><span class="brikpanel-cp-type-badge">' + escHtml(typeLabel) + '</span></td>' +
             '<td class="brikpanel-cp-cell-amount brikpanel-fit-headline"><span class="brikpanel-cp-editable brikpanel-cp-amount-cell" data-field="amount" data-value="' + escAttr(c.amount) + '">' + amountDisplay + '</span></td>' +
             '<td class="brikpanel-cp-cell-desc"><span class="brikpanel-cp-desc-cell">' + descHtml + '</span></td>' +
@@ -1437,6 +1437,17 @@
             code += chars.charAt(Math.floor(Math.random() * chars.length));
         }
         return code;
+    }
+
+    // Coupon codes are shown in capitals, Latin letters only, the way the
+    // popup and BrikMentor's emails show them (ascii_upper()). CSS
+    // text-transform followed the page's language, so a Turkish dashboard
+    // turned "brik" into "BRİK", a code nobody can type back. Other letters
+    // are left as they are: "ß" or "ı" made capital would read as a
+    // different code.
+    function asciiUpper(str) {
+        if (str === null || str === undefined) return '';
+        return String(str).replace(/[a-z]+/g, function (m) { return m.toUpperCase(); });
     }
 
     function escHtml(str) {

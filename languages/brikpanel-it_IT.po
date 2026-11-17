@@ -6259,10 +6259,6 @@ msgstr "Ieri"
 msgid "Custom"
 msgstr "Personalizzato"
 
-#: front-end/dashboard/brikpanel-dashboard.php:1048
-msgid "Select dates"
-msgstr "Seleziona date"
-
 #: front-end/dashboard/brikpanel-dashboard.php:1096
 #: front-end/dashboard/brikpanel-dashboard.php:7211
 msgid "IP Geolocation by DB-IP"
@@ -6651,26 +6647,6 @@ msgstr "Rimuovere questa spesa?"
 msgid "What to remove"
 msgstr "Cosa rimuovere"
 
-#: front-end/dashboard/brikpanel-dashboard.php:2153
-msgid "Marketplace sales"
-msgstr "Vendite marketplace"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2158
-msgid "Marketplace orders"
-msgstr "Ordini marketplace"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2163
-msgid "Avg. marketplace order"
-msgstr "Ordine marketplace medio"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2168
-msgid "Share of total revenue"
-msgstr "Quota sul fatturato totale"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2177
-msgid "Revenue by marketplace"
-msgstr "Fatturato per marketplace"
-
 #: front-end/dashboard/brikpanel-dashboard.php:2179
 #: front-end/dashboard/brikpanel-dashboard.php:2196
 #: front-end/dashboard/brikpanel-dashboard.php:2202
@@ -6682,18 +6658,6 @@ msgstr "Fatturato per marketplace"
 #: includes/brikpanel-enqueue.php:788
 msgid "Loading..."
 msgstr "Caricamento..."
-
-#: front-end/dashboard/brikpanel-dashboard.php:2183
-msgid "Marketplace share"
-msgstr "Quota marketplace"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2194
-msgid "Top categories from marketplaces"
-msgstr "Categorie top dai marketplace"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2200
-msgid "Top marketplace products"
-msgstr "Prodotti top marketplace"
 
 #: front-end/dashboard/brikpanel-dashboard.php:2285
 msgid "Website orders only"
@@ -6721,10 +6685,6 @@ msgstr "Mappa"
 msgctxt "order locations card: the world globe"
 msgid "World"
 msgstr "Mondo"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2388
-msgid "Toggle theme"
-msgstr "Cambia tema"
 
 #: front-end/dashboard/brikpanel-dashboard.php:2399
 msgctxt "map colour scale: fewer orders"
@@ -16541,18 +16501,6 @@ msgstr "Ricarica la pagina per vedere i visitatori in tempo reale."
 msgid "Share"
 msgstr "Quota"
 
-#: includes/brikpanel-enqueue.php:585
-msgid "vs. prev."
-msgstr "vs. prec."
-
-#: includes/brikpanel-enqueue.php:586
-msgid "of"
-msgstr "di"
-
-#: includes/brikpanel-enqueue.php:587
-msgid "combined revenue"
-msgstr "fatturato combinato"
-
 #: includes/brikpanel-enqueue.php:588
 msgid "No category data. Marketplace items must be linked to your WooCommerce catalog (by product or SKU) for the category breakdown to appear."
 msgstr "Nessun dato per categoria. Gli articoli del marketplace devono essere collegati al tuo catalogo WooCommerce (per prodotto o SKU) perché compaia la suddivisione per categoria."
@@ -21400,3 +21348,1061 @@ msgstr "Copiato"
 msgctxt "suffix of a duplicated product name"
 msgid "Copy"
 msgstr "Copia"
+
+#: front-end/google-sheets/views/page.php:373
+#: front-end/google-sheets/views/page.php:474
+#: front-end/google-sheets/views/page.php:671
+msgid "Manual only: BrikPanel does not check the sheet on a schedule. Click \"Pull now\" to bring your edits in."
+msgstr "Solo manuale: BrikPanel non controlla il foglio a intervalli regolari. Fai clic su \"Preleva ora\" per importare le tue modifiche."
+
+#: front-end/dashboard/brikpanel-dashboard.php:1057
+#: front-end/dashboard/brikpanel-dashboard.php:4691
+msgid "Month to date"
+msgstr "Questo mese"
+
+#: front-end/dashboard/brikpanel-dashboard.php:1088
+msgid "Choose dates"
+msgstr "Seleziona date"
+
+#: includes/brikpanel-enqueue.php:718
+msgid "vs the same period last month"
+msgstr "rispetto allo stesso periodo del mese scorso"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:633
+msgid "This email address is not eligible for the signup discount."
+msgstr "Questo indirizzo e-mail non può ricevere lo sconto di iscrizione."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:5720
+msgid "Not eligible note"
+msgstr "Nota senza codice"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6213
+msgid "One code per email"
+msgstr "Un codice per indirizzo e-mail"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6214
+msgid "Give each email address the signup code only once"
+msgstr "Dai il codice di iscrizione una sola volta a ogni indirizzo e-mail"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6215
+msgid "An address that already got a signup code, used or not, gets no new one. While its code is still valid, the popup shows that code again. Only codes still in your store count, the trash included."
+msgstr "Un indirizzo che ha già ricevuto un codice di iscrizione, usato o no, non ne riceve uno nuovo. Finché il codice è valido, il popup lo mostra di nuovo. Contano solo i codici ancora presenti nel tuo negozio, cestino compreso."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6221
+msgid "New customers only"
+msgstr "Solo nuovi clienti"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6222
+msgid "Give no signup code to email addresses that already have an order"
+msgstr "Non dare il codice di iscrizione agli indirizzi e-mail che hanno già un ordine"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6223
+msgid "Counts the orders placed with this address or by its account, paid or refunded. The visitor is still subscribed, only without a code."
+msgstr "Conta gli ordini pagati o rimborsati fatti con questo indirizzo o dal suo account. Il visitatore viene comunque iscritto, solo senza codice."
+
+msgctxt "Locations card button: the region map of a country"
+msgid "%s map"
+msgstr "Mappa di %s"
+
+msgctxt "Locations card: the menu of countries whose map can open"
+msgid "Country maps"
+msgstr "Mappe dei paesi"
+
+msgctxt "Locations card: back from a country map to the country list"
+msgid "Countries"
+msgstr "Paesi"
+
+msgid "Open its map"
+msgstr "Apri la mappa"
+
+msgid "%s country"
+msgid_plural "%s countries"
+msgstr[0] "%s paese"
+msgstr[1] "%s paesi"
+
+msgid "%s province"
+msgid_plural "%s provinces"
+msgstr[0] "%s provincia"
+msgstr[1] "%s province"
+
+msgid "%s state"
+msgid_plural "%s states"
+msgstr[0] "%s stato"
+msgstr[1] "%s stati"
+
+msgid "%s region"
+msgid_plural "%s regions"
+msgstr[0] "%s regione"
+msgstr[1] "%s regioni"
+
+msgid "Most orders: %1$s (%2$s)"
+msgstr "Più ordini: %1$s (%2$s)"
+
+msgid "Most customers: %1$s (%2$s)"
+msgstr "Più clienti: %1$s (%2$s)"
+
+msgid "Most visitors: %1$s (%2$s)"
+msgstr "Più visitatori: %1$s (%2$s)"
+
+msgid "Loading the map…"
+msgstr "Caricamento della mappa…"
+
+msgid "The map could not be loaded. Please try again."
+msgstr "Impossibile caricare la mappa. Riprova."
+
+#: front-end/returns/brikpanel-returns-account.php:45
+msgid "Withdraw from contract here"
+msgstr "Recedere dal contratto qui"
+
+#: front-end/returns/brikpanel-returns-account.php:45
+msgid "Request return"
+msgstr "Richiedi reso"
+
+#: front-end/returns/brikpanel-returns-account.php:52
+#: front-end/returns/brikpanel-returns-account.php:705
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Withdraw from contract"
+msgstr "Recedere dal contratto"
+
+#: front-end/returns/brikpanel-returns-account.php:52
+msgid "Request a return"
+msgstr "Richiedi un reso"
+
+#: front-end/returns/brikpanel-returns-account.php:204
+msgid "View return"
+msgstr "Vedi reso"
+
+#: front-end/returns/brikpanel-returns-account.php:206
+#, php-format
+msgid "View the return of order %s"
+msgstr "Vedi il reso dell'ordine %s"
+
+#: front-end/returns/brikpanel-returns-account.php:216
+#, php-format
+msgid "Return items from order %s"
+msgstr "Restituisci articoli dell'ordine %s"
+
+#: front-end/returns/brikpanel-returns-account.php:294
+#: front-end/returns/brikpanel-returns-admin.php:573
+#, php-format
+msgid "Withdrawal #%s"
+msgstr "Recesso #%s"
+
+#: front-end/returns/brikpanel-returns-account.php:296
+#: front-end/returns/brikpanel-returns-admin.php:142
+#: front-end/returns/brikpanel-returns-admin.php:575
+#: front-end/returns/brikpanel-returns-engine.php:778
+#, php-format
+msgid "Return #%s"
+msgstr "Reso #%s"
+
+#: front-end/returns/brikpanel-returns-account.php:306
+#, php-format
+msgid "Requested on %s"
+msgstr "Richiesto il %s"
+
+#: front-end/returns/brikpanel-returns-account.php:321
+#: front-end/returns/brikpanel-returns-account.php:584
+#: front-end/returns/brikpanel-returns-engine.php:432
+#: front-end/returns/brikpanel-returns-engine.php:1368
+#: templates/emails/plain/brikpanel-return.php:56
+#, php-format
+msgctxt "units × product"
+msgid "%1$s × %2$s"
+msgstr "%1$s × %2$s"
+
+#: front-end/returns/brikpanel-returns-account.php:327
+#: templates/emails/brikpanel-return.php:91
+#: templates/emails/plain/brikpanel-return.php:62
+msgid "Reason:"
+msgstr "Motivo:"
+
+#: front-end/returns/brikpanel-returns-account.php:331
+msgid "Message from the store"
+msgstr "Messaggio del negozio"
+
+#: front-end/returns/brikpanel-returns-account.php:339
+#: front-end/returns/brikpanel-returns-admin.php:728
+#, php-format
+msgid "Refunded: %s"
+msgstr "Rimborsato: %s"
+
+#: front-end/returns/brikpanel-returns-account.php:349
+msgid "Cancel this request"
+msgstr "Annulla questa richiesta"
+
+#: front-end/returns/brikpanel-returns-account.php:399
+msgid "Choose the items you withdraw from. You do not have to give a reason."
+msgstr "Scegli gli articoli per cui eserciti il recesso. Non devi indicare un motivo."
+
+#: front-end/returns/brikpanel-returns-account.php:400
+msgid "Choose what you want to send back."
+msgstr "Scegli cosa vuoi restituire."
+
+#: front-end/returns/brikpanel-returns-account.php:447
+#, php-format
+msgid "Quantity of %s to return"
+msgstr "Quantità di %s da restituire"
+
+#: front-end/returns/brikpanel-returns-account.php:466
+msgid "Your name"
+msgstr "Il tuo nome"
+
+#: front-end/returns/brikpanel-returns-account.php:470
+msgid "Email for the confirmation"
+msgstr "Email per la conferma"
+
+#: front-end/returns/brikpanel-returns-account.php:485
+msgid "Reason (optional)"
+msgstr "Motivo (facoltativo)"
+
+#: front-end/returns/brikpanel-returns-account.php:487
+#: front-end/returns/brikpanel-returns-account.php:593
+#: front-end/returns/brikpanel-returns-admin.php:407
+#: front-end/returns/brikpanel-returns-admin.php:748
+#: front-end/returns/brikpanel-returns-engine.php:1393
+msgid "Reason"
+msgstr "Motivo"
+
+#: front-end/returns/brikpanel-returns-account.php:501
+msgid "Message (optional)"
+msgstr "Messaggio (facoltativo)"
+
+#: front-end/returns/brikpanel-returns-account.php:502
+msgid "For an exchange, write the size or colour you want."
+msgstr "Per un cambio, scrivi la taglia o il colore che desideri."
+
+#: front-end/returns/brikpanel-returns-account.php:510
+#: front-end/returns/brikpanel-returns-admin.php:775
+#: front-end/returns/brikpanel-returns-settings.php:173
+msgid "Photos"
+msgstr "Foto"
+
+#: front-end/returns/brikpanel-returns-account.php:513
+msgid "Photos (optional)"
+msgstr "Foto (facoltative)"
+
+#: front-end/returns/brikpanel-returns-account.php:523
+#, php-format
+msgid "Up to %1$s photos, %2$s each."
+msgstr "Fino a %1$s foto, massimo %2$s ciascuna."
+
+#: front-end/returns/brikpanel-returns-account.php:538
+msgid "Continue"
+msgstr "Continua"
+
+#: front-end/returns/brikpanel-returns-account.php:538
+msgid "Send return request"
+msgstr "Invia richiesta di reso"
+
+#: front-end/returns/brikpanel-returns-account.php:554
+#: front-end/returns/brikpanel-returns-account.php:996
+msgid "This page has expired. Please fill in the form again."
+msgstr "Questa pagina è scaduta. Compila di nuovo il modulo."
+
+#: front-end/returns/brikpanel-returns-account.php:561
+msgid "Check and confirm your withdrawal"
+msgstr "Controlla e conferma il recesso"
+
+#: front-end/returns/brikpanel-returns-account.php:605
+#: templates/emails/brikpanel-return.php:102
+#: templates/emails/plain/brikpanel-return.php:71
+msgid "I withdraw from my contract for the items listed above."
+msgstr "Recedo dal mio contratto per gli articoli elencati sopra."
+
+#: front-end/returns/brikpanel-returns-account.php:611
+msgid "Confirm withdrawal"
+msgstr "Conferma recesso"
+
+#: front-end/returns/brikpanel-returns-account.php:612
+msgid "Change"
+msgstr "Modifica"
+
+#: front-end/returns/brikpanel-returns-account.php:659
+msgid "Return another order"
+msgstr "Restituisci un altro ordine"
+
+#: front-end/returns/brikpanel-returns-account.php:670
+msgid "Have an account?"
+msgstr "Hai un account?"
+
+#: front-end/returns/brikpanel-returns-account.php:705
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Return an order"
+msgstr "Restituisci un ordine"
+
+#: front-end/returns/brikpanel-returns-account.php:707
+msgid "None of your orders can be returned right now."
+msgstr "Al momento nessuno dei tuoi ordini può essere restituito."
+
+#: front-end/returns/brikpanel-returns-account.php:714
+#, php-format
+msgid "Order #%1$s, %2$s"
+msgstr "Ordine #%1$s, %2$s"
+
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Ordered without logging in?"
+msgstr "Hai ordinato senza accedere?"
+
+#: front-end/returns/brikpanel-returns-account.php:731
+msgid "Enter your order number and the email address you used for the order."
+msgstr "Inserisci il numero d'ordine e l'indirizzo email usato per l'ordine."
+
+#: front-end/returns/brikpanel-returns-account.php:743
+msgid "Find order"
+msgstr "Trova ordine"
+
+#: front-end/returns/brikpanel-returns-account.php:784
+msgid "We could not open this order. Please start again."
+msgstr "Non è stato possibile aprire questo ordine. Ricomincia da capo."
+
+#: front-end/returns/brikpanel-returns-account.php:789
+#: front-end/returns/brikpanel-returns-account.php:1070
+msgid "This page has expired. Please send the form again."
+msgstr "Questa pagina è scaduta. Invia di nuovo il modulo."
+
+#: front-end/returns/brikpanel-returns-account.php:846
+#: front-end/returns/brikpanel-returns-account.php:1117
+#, php-format
+msgid "You can add up to %s photos."
+msgstr "Puoi aggiungere fino a %s foto."
+
+#: front-end/returns/brikpanel-returns-account.php:896
+#: front-end/returns/brikpanel-returns-account.php:953
+#: front-end/returns/brikpanel-returns-account.php:1120
+#: front-end/returns/brikpanel-returns-engine.php:172
+msgid "Choose at least one item to return."
+msgstr "Scegli almeno un articolo da restituire."
+
+#: front-end/returns/brikpanel-returns-account.php:900
+#: front-end/returns/brikpanel-returns-engine.php:355
+msgid "Please choose a reason for the return."
+msgstr "Scegli un motivo per il reso."
+
+#: front-end/returns/brikpanel-returns-account.php:931
+msgid "Your return request has been sent. We will email you as soon as we have checked it."
+msgstr "La tua richiesta di reso è stata inviata. Ti scriveremo un'email appena l'avremo controllata."
+
+#: front-end/returns/brikpanel-returns-account.php:957
+msgid "Please enter your name and a valid email address."
+msgstr "Inserisci il tuo nome e un indirizzo email valido."
+
+#: front-end/returns/brikpanel-returns-account.php:1026
+#, php-format
+msgid "We received your withdrawal. The confirmation is on its way to %s."
+msgstr "Abbiamo ricevuto il tuo recesso. La conferma sta arrivando a %s."
+
+#: front-end/returns/brikpanel-returns-account.php:1049
+msgid "This page has expired. Please try again."
+msgstr "Questa pagina è scaduta. Riprova."
+
+#: front-end/returns/brikpanel-returns-account.php:1056
+msgid "Your return request is cancelled."
+msgstr "La tua richiesta di reso è stata annullata."
+
+#: front-end/returns/brikpanel-returns-account.php:1078
+msgid "Too many attempts. Please wait a few minutes and try again."
+msgstr "Troppi tentativi. Attendi qualche minuto e riprova."
+
+#: front-end/returns/brikpanel-returns-account.php:1084
+msgid "We could not find an order with this number and email address."
+msgstr "Non abbiamo trovato nessun ordine con questo numero e questo indirizzo email."
+
+#: front-end/returns/brikpanel-returns-admin.php:186
+msgid "The deduction is larger than the amount."
+msgstr "La trattenuta supera l'importo."
+
+#: front-end/returns/brikpanel-returns-admin.php:203
+msgid "You are not allowed to see returns."
+msgstr "Non hai i permessi per vedere i resi."
+
+#: front-end/returns/brikpanel-returns-admin.php:267
+#: front-end/returns/brikpanel-returns.php:172
+msgctxt "return status"
+msgid "Requested"
+msgstr "Richiesto"
+
+#: front-end/returns/brikpanel-returns-admin.php:271
+#: front-end/returns/brikpanel-returns.php:177
+msgctxt "return status"
+msgid "Approved"
+msgstr "Approvato"
+
+#: front-end/returns/brikpanel-returns-admin.php:275
+#: front-end/returns/brikpanel-returns.php:182
+msgctxt "return status"
+msgid "Item received"
+msgstr "Articolo ricevuto"
+
+#: front-end/returns/brikpanel-returns-admin.php:279
+#: front-end/returns/brikpanel-returns.php:192
+msgctxt "return status"
+msgid "Refunded"
+msgstr "Rimborsato"
+
+#: front-end/returns/brikpanel-returns-admin.php:283
+#: front-end/returns/brikpanel-returns.php:197
+msgctxt "return status"
+msgid "Rejected"
+msgstr "Rifiutato"
+
+#: front-end/returns/brikpanel-returns-admin.php:371
+msgid "Search returns"
+msgstr "Cerca resi"
+
+#: front-end/returns/brikpanel-returns-admin.php:372
+msgid "Order number, name or email"
+msgstr "Numero d'ordine, nome o email"
+
+#: front-end/returns/brikpanel-returns-admin.php:394
+msgid "No returns match your search."
+msgstr "Nessun reso corrisponde alla ricerca."
+
+#: front-end/returns/brikpanel-returns-admin.php:394
+msgid "No returns here yet."
+msgstr "Ancora nessun reso."
+
+#: front-end/returns/brikpanel-returns-admin.php:396
+msgid "Customers ask for returns from their account. Their requests show up here, and you get an email for each one."
+msgstr "I clienti richiedono i resi dal loro account. Le richieste compaiono qui e ricevi un'email per ognuna."
+
+#: front-end/returns/brikpanel-returns-admin.php:403
+#: front-end/returns/brikpanel-returns-admin.php:1235
+#: front-end/returns/brikpanel-returns-engine.php:1373
+msgid "Return"
+msgstr "Reso"
+
+#: front-end/returns/brikpanel-returns-admin.php:408
+msgid "Requested"
+msgstr "Richiesto il"
+
+#: front-end/returns/brikpanel-returns-admin.php:428
+#, php-format
+msgid "%1$s to %2$s of %3$s"
+msgstr "%1$s-%2$s di %3$s"
+
+#: front-end/returns/brikpanel-returns-admin.php:479
+#: front-end/returns/brikpanel-returns-settings.php:186
+msgid "EU withdrawal"
+msgstr "Recesso UE"
+
+#: front-end/returns/brikpanel-returns-admin.php:551
+msgid "Return not found"
+msgstr "Reso non trovato"
+
+#: front-end/returns/brikpanel-returns-admin.php:553
+#: front-end/returns/brikpanel-returns-engine.php:515
+#: front-end/returns/brikpanel-returns-engine.php:737
+msgid "This return no longer exists."
+msgstr "Questo reso non esiste più."
+
+#: front-end/returns/brikpanel-returns-admin.php:566
+msgid "Approve"
+msgstr "Approva"
+
+#: front-end/returns/brikpanel-returns-admin.php:567
+msgid "Item received"
+msgstr "Articolo ricevuto"
+
+#: front-end/returns/brikpanel-returns-admin.php:568
+msgid "Refund"
+msgstr "Rimborsa"
+
+#: front-end/returns/brikpanel-returns-admin.php:569
+msgid "Reject"
+msgstr "Rifiuta"
+
+#: front-end/returns/brikpanel-returns-admin.php:623
+msgid "A refund for this return is in progress. Reload the page in a minute."
+msgstr "È in corso un rimborso per questo reso. Ricarica la pagina tra un minuto."
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Approve the return"
+msgstr "Approva il reso"
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Message to the customer (optional)"
+msgstr "Messaggio al cliente (facoltativo)"
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "For example where to send the items and how to pack them."
+msgstr "Per esempio dove spedire gli articoli e come imballarli."
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Approve and email the customer"
+msgstr "Approva e avvisa il cliente via email"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reject the return"
+msgstr "Rifiuta il reso"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reason for the customer"
+msgstr "Motivo per il cliente"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "The customer gets this text by email."
+msgstr "Il cliente riceve questo testo via email."
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reject and email the customer"
+msgstr "Rifiuta e avvisa il cliente via email"
+
+#: front-end/returns/brikpanel-returns-admin.php:672
+msgid "Paid per item"
+msgstr "Pagato per articolo"
+
+#: front-end/returns/brikpanel-returns-admin.php:756
+msgid "Your message to the customer"
+msgstr "Il tuo messaggio al cliente"
+
+#: front-end/returns/brikpanel-returns-admin.php:780
+#, php-format
+msgid "Photo %s from the customer"
+msgstr "Foto %s del cliente"
+
+#: front-end/returns/brikpanel-returns-admin.php:802
+#: front-end/returns/brikpanel-returns-engine.php:1407
+#: templates/emails/brikpanel-return.php:101
+#: templates/emails/plain/brikpanel-return.php:71
+msgid "Withdrawal statement"
+msgstr "Dichiarazione di recesso"
+
+#: front-end/returns/brikpanel-returns-admin.php:808
+#: templates/emails/brikpanel-return.php:123
+#: templates/emails/plain/brikpanel-return.php:78
+msgid "Sent on"
+msgstr "Inviata il"
+
+#: front-end/returns/brikpanel-returns-admin.php:811
+msgid "Refund due by"
+msgstr "Rimborso entro il"
+
+#: front-end/returns/brikpanel-returns-admin.php:815
+msgid "You may wait with the refund until the items are back or the customer shows they sent them."
+msgstr "Puoi sospendere il rimborso finché non ricevi gli articoli o finché il cliente non dimostra di averli spediti."
+
+#: front-end/returns/brikpanel-returns-admin.php:842
+msgid "Ordered on"
+msgstr "Ordinato il"
+
+#: front-end/returns/brikpanel-returns-admin.php:851
+#: front-end/returns/brikpanel-returns-engine.php:744
+msgid "The order of this return no longer exists."
+msgstr "L'ordine di questo reso non esiste più."
+
+#: front-end/returns/brikpanel-returns-admin.php:866
+msgid "History"
+msgstr "Cronologia"
+
+#: front-end/returns/brikpanel-returns-admin.php:948
+msgid "Did the items arrive?"
+msgstr "Gli articoli sono arrivati?"
+
+#: front-end/returns/brikpanel-returns-admin.php:949
+msgid "Mark the return as received when the items are back. You refund in the next step."
+msgstr "Segna il reso come ricevuto quando gli articoli sono tornati. Il rimborso si fa nel passaggio successivo."
+
+#: front-end/returns/brikpanel-returns-admin.php:953
+msgid "Items received"
+msgstr "Articoli ricevuti"
+
+#: front-end/returns/brikpanel-returns-admin.php:1001
+msgid "Refund the return"
+msgstr "Rimborsa il reso"
+
+#: front-end/returns/brikpanel-returns-admin.php:1009
+msgid "Also refund shipping"
+msgstr "Rimborsa anche la spedizione"
+
+#: front-end/returns/brikpanel-returns-admin.php:1014
+msgid "Deduction (optional)"
+msgstr "Trattenuta (facoltativa)"
+
+#: front-end/returns/brikpanel-returns-admin.php:1016
+msgid "Refund amount"
+msgstr "Importo del rimborso"
+
+#: front-end/returns/brikpanel-returns-admin.php:1022
+msgid "Put the items back in stock"
+msgstr "Rimetti gli articoli in magazzino"
+
+#: front-end/returns/brikpanel-returns-admin.php:1025
+msgid "These items were already put back in stock by an earlier refund."
+msgstr "Questi articoli sono già stati rimessi in magazzino con un rimborso precedente."
+
+#: front-end/returns/brikpanel-returns-admin.php:1032
+#: front-end/returns/brikpanel-returns-admin.php:1040
+msgid "Refund manually"
+msgstr "Rimborsa manualmente"
+
+#: front-end/returns/brikpanel-returns-admin.php:1036
+#, php-format
+msgid "Refund via %s"
+msgstr "Rimborsa tramite %s"
+
+#: front-end/returns/brikpanel-returns-admin.php:1044
+msgid "This payment method cannot send money back by itself. Record the refund here and pay the customer yourself, for example by bank transfer."
+msgstr "Questo metodo di pagamento non può restituire il denaro da solo. Registra qui il rimborso e paga tu il cliente, per esempio con un bonifico."
+
+#: front-end/returns/brikpanel-returns-admin.php:1058
+#: front-end/returns/brikpanel-returns-admin.php:1059
+msgid "Photo from the customer"
+msgstr "Foto del cliente"
+
+#: front-end/returns/brikpanel-returns-admin.php:1083
+msgid "You are not allowed to handle returns."
+msgstr "Non hai i permessi per gestire i resi."
+
+#: front-end/returns/brikpanel-returns-admin.php:1102
+msgid "The return is refunded. WooCommerce sent the customer its refund email."
+msgstr "Il reso è rimborsato. WooCommerce ha inviato al cliente la sua email di rimborso."
+
+#: front-end/returns/brikpanel-returns-admin.php:1107
+msgid "The return is approved and the customer got an email."
+msgstr "Il reso è approvato e il cliente ha ricevuto un'email."
+
+#: front-end/returns/brikpanel-returns-admin.php:1108
+msgid "The return is rejected and the customer got an email."
+msgstr "Il reso è rifiutato e il cliente ha ricevuto un'email."
+
+#: front-end/returns/brikpanel-returns-admin.php:1109
+msgid "The return is marked as received."
+msgstr "Il reso è segnato come ricevuto."
+
+#: front-end/returns/brikpanel-returns-admin.php:1113
+#: front-end/returns/brikpanel-returns-engine.php:528
+msgid "Unknown action."
+msgstr "Azione sconosciuta."
+
+#: front-end/returns/brikpanel-returns-admin.php:1235
+msgid "Withdrawal"
+msgstr "Recesso"
+
+#: front-end/returns/brikpanel-returns-admin.php:1251
+#: front-end/returns/brikpanel-returns-engine.php:1334
+#: front-end/returns/brikpanel-returns-engine.php:1347
+#: front-end/returns/brikpanel-returns-engine.php:1413
+msgid "Return requests"
+msgstr "Richieste di reso"
+
+#: front-end/returns/brikpanel-returns-emails.php:111
+#, php-format
+msgid "%1$s (UTC%2$s)"
+msgstr "%1$s (UTC%2$s)"
+
+#: front-end/returns/brikpanel-returns-engine.php:142
+msgid "One of the quantities is no longer available to return. Please check the form again."
+msgstr "Una delle quantità non può più essere restituita. Controlla di nuovo il modulo."
+
+#: front-end/returns/brikpanel-returns-engine.php:233
+msgid "Returns are not available in this store."
+msgstr "I resi non sono disponibili in questo negozio."
+
+#: front-end/returns/brikpanel-returns-engine.php:236
+msgid "This order cannot be returned."
+msgstr "Questo ordine non può essere restituito."
+
+#: front-end/returns/brikpanel-returns-engine.php:239
+msgid "This order cannot be returned yet."
+msgstr "Questo ordine non può ancora essere restituito."
+
+#: front-end/returns/brikpanel-returns-engine.php:243
+msgid "The return period for this order has ended."
+msgstr "Il periodo di reso per questo ordine è terminato."
+
+#: front-end/returns/brikpanel-returns-engine.php:250
+#: front-end/returns/class-brikpanel-returns-store.php:503
+msgid "There is already an open return for this order."
+msgstr "Esiste già un reso aperto per questo ordine."
+
+#: front-end/returns/brikpanel-returns-engine.php:261
+msgid "Everything in this order has already been returned."
+msgstr "Tutto il contenuto di questo ordine è già stato restituito."
+
+#: front-end/returns/brikpanel-returns-engine.php:320
+msgid "This order is being updated. Please try again in a moment."
+msgstr "Questo ordine è in fase di aggiornamento. Riprova tra un momento."
+
+#: front-end/returns/brikpanel-returns-engine.php:360
+msgid "Please add at least one photo of the item."
+msgstr "Aggiungi almeno una foto dell'articolo."
+
+#: front-end/returns/brikpanel-returns-engine.php:438
+#, php-format
+msgid "Withdrawal #%1$s received from the customer: %2$s."
+msgstr "Recesso #%1$s ricevuto dal cliente: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:441
+#, php-format
+msgid "Return #%1$s requested by the customer: %2$s."
+msgstr "Reso #%1$s richiesto dal cliente: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:445
+#, php-format
+msgid "Reason: %s"
+msgstr "Motivo: %s"
+
+#: front-end/returns/brikpanel-returns-engine.php:483
+msgid "This return was changed in the meantime. The page shows the latest state now."
+msgstr "Questo reso è stato modificato nel frattempo. La pagina ora mostra lo stato attuale."
+
+#: front-end/returns/brikpanel-returns-engine.php:531
+msgid "Please tell the customer why the return is rejected."
+msgstr "Spiega al cliente perché il reso viene rifiutato."
+
+#: front-end/returns/brikpanel-returns-engine.php:545
+#, php-format
+msgid "Return #%s approved."
+msgstr "Reso #%s approvato."
+
+#: front-end/returns/brikpanel-returns-engine.php:547
+#, php-format
+msgid "Return #%s rejected."
+msgstr "Reso #%s rifiutato."
+
+#: front-end/returns/brikpanel-returns-engine.php:549
+#, php-format
+msgid "Return #%s: the items arrived back."
+msgstr "Reso #%s: gli articoli sono tornati."
+
+#: front-end/returns/brikpanel-returns-engine.php:551
+#, php-format
+msgid "Return #%s cancelled by the customer."
+msgstr "Reso #%s annullato dal cliente."
+
+#: front-end/returns/brikpanel-returns-engine.php:747
+msgid "This order was refunded in the meantime. Check the amount again."
+msgstr "Questo ordine è stato rimborsato nel frattempo. Controlla di nuovo l'importo."
+
+#: front-end/returns/brikpanel-returns-engine.php:752
+msgid "There is nothing left to refund for this return."
+msgstr "Non resta nulla da rimborsare per questo reso."
+
+#: front-end/returns/brikpanel-returns-engine.php:759
+#, php-format
+msgid "Only %s can still be refunded on this order."
+msgstr "Su questo ordine si possono ancora rimborsare solo %s."
+
+#: front-end/returns/brikpanel-returns-engine.php:773
+#, php-format
+msgid "Return #%1$s: %2$s"
+msgstr "Reso #%1$s: %2$s"
+
+#: front-end/returns/brikpanel-returns-engine.php:798
+msgid "WooCommerce could not create the refund."
+msgstr "WooCommerce non è riuscito a creare il rimborso."
+
+#: front-end/returns/brikpanel-returns-engine.php:827
+#, php-format
+msgid "Return #%1$s refunded: %2$s."
+msgstr "Reso #%1$s rimborsato: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:908
+msgid "The refund was deleted in WooCommerce."
+msgstr "Il rimborso è stato eliminato in WooCommerce."
+
+#: front-end/returns/brikpanel-returns-engine.php:1027
+msgid "One of the photos could not be used. Please send JPG, PNG or WebP images."
+msgstr "Una delle foto non può essere usata. Invia immagini JPG, PNG o WebP."
+
+#: front-end/returns/brikpanel-returns-engine.php:1057
+msgid "Photos cannot be saved in this store right now. Please send the request without photos."
+msgstr "Al momento questo negozio non può salvare foto. Invia la richiesta senza foto."
+
+#: front-end/returns/brikpanel-returns-engine.php:1095
+#, php-format
+msgid "Each photo can be at most %s."
+msgstr "Ogni foto può pesare al massimo %s."
+
+#: front-end/returns/brikpanel-returns-engine.php:1155
+msgid "You are not allowed to see this file."
+msgstr "Non hai i permessi per vedere questo file."
+
+#: front-end/returns/brikpanel-returns-engine.php:1160
+msgid "This file no longer exists."
+msgstr "Questo file non esiste più."
+
+#: front-end/returns/brikpanel-returns-engine.php:1385
+msgid "Requested on"
+msgstr "Richiesto il"
+
+#: front-end/returns/brikpanel-returns-engine.php:1397
+msgid "Note"
+msgstr "Nota"
+
+#: front-end/returns/brikpanel-returns-settings.php:49
+msgid "Open the orders list"
+msgstr "Apri l'elenco ordini"
+
+#: front-end/returns/brikpanel-returns-settings.php:131
+msgid "Customers ask for a return from their account, choose the items, a reason and add photos. You approve, mark the items as received and refund in one place: Returns, next to Orders."
+msgstr "I clienti richiedono un reso dal loro account, scelgono gli articoli e un motivo e aggiungono foto. Tu approvi, segni gli articoli come ricevuti e rimborsi in un unico posto: Resi, accanto a Ordini."
+
+#: front-end/returns/brikpanel-returns-settings.php:134
+msgid "Customer returns"
+msgstr "Resi dei clienti"
+
+#: front-end/returns/brikpanel-returns-settings.php:135
+msgid "Let customers request returns from their account"
+msgstr "Consenti ai clienti di richiedere un reso dal loro account"
+
+#: front-end/returns/brikpanel-returns-settings.php:141
+msgid "Return window"
+msgstr "Periodo di reso"
+
+#: front-end/returns/brikpanel-returns-settings.php:142
+msgid "days after the order is completed"
+msgstr "giorni dopo il completamento dell'ordine"
+
+#: front-end/returns/brikpanel-returns-settings.php:143
+msgid "0 means no limit."
+msgstr "0 significa nessun limite."
+
+#: front-end/returns/brikpanel-returns-settings.php:155
+msgid "Returnable statuses"
+msgstr "Stati che consentono il reso"
+
+#: front-end/returns/brikpanel-returns-settings.php:156
+msgid "Orders in these statuses can be returned. Add a status such as \"Delivered\" if your store uses one."
+msgstr "Gli ordini in questi stati possono essere restituiti. Aggiungi uno stato come «Consegnato» se il tuo negozio ne usa uno."
+
+#: front-end/returns/brikpanel-returns-settings.php:165
+msgid "Return reasons"
+msgstr "Motivi di reso"
+
+#: front-end/returns/brikpanel-returns-settings.php:166
+msgid "One reason per line. Customers choose one of them."
+msgstr "Un motivo per riga. I clienti ne scelgono uno."
+
+#: front-end/returns/brikpanel-returns-settings.php:174
+msgid "Customers can add up to 5 photos of the items."
+msgstr "I clienti possono aggiungere fino a 5 foto degli articoli."
+
+#: front-end/returns/brikpanel-returns-settings.php:181
+msgid "Required"
+msgstr "Obbligatorio"
+
+#: front-end/returns/brikpanel-returns-settings.php:187
+msgid "Use the EU \"Withdraw from contract here\" wording and steps"
+msgstr "Usa la dicitura UE «Recedere dal contratto qui» e i relativi passaggi"
+
+#: front-end/returns/brikpanel-returns-settings.php:188
+msgid "Required for stores selling to consumers in the EU since 19 June 2026. Customers can withdraw without a reason, also before the order is completed, until at least 14 days after it is completed, and confirm it in a second step. They get an email with the date and time. If your deliveries take longer, add the delivery time to the return window."
+msgstr "Obbligatorio dal 19 giugno 2026 per i negozi che vendono a consumatori nell'UE. I clienti possono recedere senza motivo, anche prima che l'ordine sia completato, fino ad almeno 14 giorni dopo il completamento, e confermano in un secondo passaggio. Ricevono un'email con data e ora. Se le tue consegne richiedono più tempo, aggiungi il tempo di consegna al periodo di reso."
+
+#: front-end/returns/brikpanel-returns-settings.php:247
+msgid "Returns link"
+msgstr "Link per i resi"
+
+#: front-end/returns/brikpanel-returns-settings.php:254
+msgid "Customers without an account return their order here with the order number and email. Put this link in your store footer, for example as \"Withdraw from contract here\" for EU customers."
+msgstr "I clienti senza account restituiscono qui il loro ordine con il numero d'ordine e l'email. Inserisci questo link nel footer del tuo negozio, per esempio come «Recedere dal contratto qui» per i clienti dell'UE."
+
+#: front-end/returns/brikpanel-returns-settings.php:280
+msgid "Flexible Refund"
+msgstr "Flexible Refund"
+
+#: front-end/returns/brikpanel-returns-settings.php:282
+msgid "The Flexible Refund plugin is also active. With both turned on, customers see two return buttons on their orders. Keep one of them."
+msgstr "Anche il plugin Flexible Refund è attivo. Con entrambi attivi, i clienti vedono due pulsanti di reso nei loro ordini. Tienine solo uno."
+
+#: front-end/returns/brikpanel-returns.php:111
+msgid "Damaged or defective"
+msgstr "Danneggiato o difettoso"
+
+#: front-end/returns/brikpanel-returns.php:112
+msgid "Wrong size"
+msgstr "Taglia sbagliata"
+
+#: front-end/returns/brikpanel-returns.php:113
+msgid "Not as described"
+msgstr "Non corrisponde alla descrizione"
+
+#: front-end/returns/brikpanel-returns.php:114
+msgid "Changed my mind"
+msgstr "Ho cambiato idea"
+
+#: front-end/returns/brikpanel-returns.php:115
+msgctxt "return reason"
+msgid "Other"
+msgstr "Altro"
+
+#: front-end/returns/brikpanel-returns.php:187
+msgctxt "return status"
+msgid "Refunding"
+msgstr "Rimborso in corso"
+
+#: front-end/returns/brikpanel-returns.php:202
+msgctxt "return status"
+msgid "Cancelled"
+msgstr "Annullato"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:133
+#: front-end/returns/class-brikpanel-returns-emails.php:147
+msgid "New return request"
+msgstr "Nuova richiesta di reso"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:134
+msgid "Sent to the store when a customer asks for a return or withdraws from an order."
+msgstr "Inviata al negozio quando un cliente richiede un reso o recede da un ordine."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:142
+msgid "[{site_title}]: New return request #{return_number}"
+msgstr "[{site_title}]: Nuova richiesta di reso #{return_number}"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:160
+#, php-format
+msgid "%1$s withdrew from the contract for order #%2$s."
+msgstr "%1$s ha esercitato il recesso dal contratto per l'ordine #%2$s."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:163
+#, php-format
+msgid "%1$s asked to return items from order #%2$s."
+msgstr "%1$s ha chiesto di restituire articoli dell'ordine #%2$s."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:166
+msgid "The order is not completed yet: stop the shipment if you still can."
+msgstr "L'ordine non è ancora completato: blocca la spedizione se sei ancora in tempo."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:180
+msgid "Recipients"
+msgstr "Destinatari"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:183
+#, php-format
+msgid "Enter recipients (comma separated) for this email. Defaults to %s."
+msgstr "Inserisci i destinatari di questa email (separati da virgole). Predefinito: %s."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:200
+#: front-end/returns/class-brikpanel-returns-emails.php:213
+msgid "Return request received"
+msgstr "Richiesta di reso ricevuta"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:201
+msgid "Sent to the customer when their return request arrives. For an EU withdrawal it is the legally required acknowledgement and is always sent."
+msgstr "Inviata al cliente quando arriva la sua richiesta di reso. Per un recesso UE è l'avviso di ricevimento richiesto dalla legge e viene sempre inviata."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:208
+msgid "We received your return request for order #{order_number}"
+msgstr "Abbiamo ricevuto la tua richiesta di reso per l'ordine #{order_number}"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:223
+msgid "Your withdrawal from order #{order_number}"
+msgstr "Il tuo recesso dall'ordine #{order_number}"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:231
+msgid "Withdrawal received"
+msgstr "Recesso ricevuto"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:253
+#, php-format
+msgid "We received your withdrawal from the contract on %s. This email confirms it. Here is what you sent:"
+msgstr "Abbiamo ricevuto il tuo recesso dal contratto il %s. Questa email ne conferma la ricezione. Ecco cosa ci hai inviato:"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:256
+#, php-format
+msgid "We received your return request on %s. We will check it and let you know by email."
+msgstr "Abbiamo ricevuto la tua richiesta di reso il %s. La controlleremo e ti avviseremo via email."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:267
+#: front-end/returns/class-brikpanel-returns-emails.php:280
+msgid "Return approved"
+msgstr "Reso approvato"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:268
+msgid "Sent to the customer when you approve a return, with your message (for example where to send the items)."
+msgstr "Inviata al cliente quando approvi un reso, con il tuo messaggio (per esempio dove spedire gli articoli)."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:275
+msgid "Your return for order #{order_number} is approved"
+msgstr "Il tuo reso per l'ordine #{order_number} è approvato"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:285
+msgid "Good news: your return is approved. Please follow the instructions below."
+msgstr "Buone notizie: il tuo reso è approvato. Segui le istruzioni qui sotto."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:296
+msgid "Return rejected"
+msgstr "Reso rifiutato"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:297
+msgid "Sent to the customer when you reject a return, with your reason."
+msgstr "Inviata al cliente quando rifiuti un reso, con il tuo motivo."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:304
+msgid "About your return for order #{order_number}"
+msgstr "Informazioni sul tuo reso per l'ordine #{order_number}"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:309
+msgid "Return not accepted"
+msgstr "Reso non accettato"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:314
+msgid "We are sorry, we could not accept your return. Here is why:"
+msgstr "Ci dispiace, non abbiamo potuto accettare il tuo reso. Ecco il motivo:"
+
+#: front-end/returns/class-brikpanel-returns-store.php:452
+msgid "Returns could not be saved. Please try again later."
+msgstr "Non è stato possibile salvare i resi. Riprova più tardi."
+
+#: templates/emails/brikpanel-return.php:68
+#: templates/emails/plain/brikpanel-return.php:36
+#, php-format
+msgid "Return #%1$s for order #%2$s"
+msgstr "Reso #%1$s per l'ordine #%2$s"
+
+#: templates/emails/brikpanel-return.php:94
+#: templates/emails/plain/brikpanel-return.php:65
+msgid "Note:"
+msgstr "Nota:"
+
+#: templates/emails/brikpanel-return.php:131
+#: templates/emails/plain/brikpanel-return.php:82
+msgid "View your return"
+msgstr "Vedi il tuo reso"
+
+#: templates/emails/brikpanel-return.php:134
+#: templates/emails/plain/brikpanel-return.php:85
+msgid "Open the return"
+msgstr "Apri il reso"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2256
+#: includes/brikpanel-enqueue.php:588
+msgctxt "dashboard card title: sales from the marketplaces BrikMarket connects"
+msgid "Marketplaces"
+msgstr "Marketplace"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2246
+msgid "Best sellers on marketplaces"
+msgstr "Più venduti sui marketplace"
+
+#: includes/brikpanel-enqueue.php:591
+msgid "Your website"
+msgstr "Il tuo sito"
+
+#: includes/brikpanel-enqueue.php:592
+msgid "No marketplace orders in this period."
+msgstr "Nessun ordine dai marketplace in questo periodo."
+
+#: includes/brikpanel-enqueue.php:594
+msgid "Marketplace sales per day"
+msgstr "Vendite sui marketplace al giorno"
+
+#: includes/brikpanel-enqueue.php:595
+msgid "Marketplace sales per hour"
+msgstr "Vendite sui marketplace all'ora"
+
+#. translators: %s: units of one product sold on marketplaces, already
+#. formatted (e.g. 3).
+#: includes/brikpanel-enqueue.php:599
+#, php-format
+msgctxt "units of one product sold on marketplaces, e.g. \"3 sold\""
+msgid "%s sold"
+msgid_plural "%s sold"
+msgstr[0] "%s venduto"
+msgstr[1] "%s venduti"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2277
+msgid "Where your sales came from"
+msgstr "Da dove arrivano le tue vendite"

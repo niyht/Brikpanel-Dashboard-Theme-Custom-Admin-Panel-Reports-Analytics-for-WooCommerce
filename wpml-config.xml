@@ -6,5 +6,6 @@
     <key name="brikpanel_status_emails">
       <key name="*"><key name="subject"/><key name="heading"/><key name="content"/></key>
     </key>
+    <key name="brikpanel_returns_reasons"/>
   </admin-texts>
 </wpml-config>

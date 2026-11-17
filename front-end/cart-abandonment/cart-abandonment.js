@@ -1554,6 +1554,61 @@
 			var autoClose = null;
 
 			function showSuccess(data) {
+				// The line shown instead of a code when the merchant's rules
+				// ("One code per email", "New customers only") keep it back.
+				// A page cached before that sentence existed carries no such
+				// key; then there is no line at all rather than a stray word.
+				function buildWithheldLine() {
+					var text = cfg.i18n.couponWithheld;
+					if (typeof text !== 'string' || text === '') {
+						return null;
+					}
+					var line = document.createElement('div');
+					line.className = 'brikpanel-cartab-coupon-hint';
+					line.textContent = text;
+					return line;
+				}
+
+				// The code panel for a code handed over on screen, by the first
+				// reply or by an address correction. Returns the stored record
+				// (null when storage is blocked), which decides how it closes.
+				function appendCouponBox(d) {
+					// Keep the code past this one screen.
+					var kept = saveCoupon(d);
+					var couponBox = document.createElement('div');
+					couponBox.className = 'brikpanel-cartab-coupon';
+
+					var intro = document.createElement('div');
+					intro.className = 'brikpanel-cartab-coupon-intro';
+					intro.textContent = cfg.i18n.couponIntro;
+
+					var hint = document.createElement('div');
+					hint.className = 'brikpanel-cartab-coupon-hint';
+					hint.textContent = d.applied ? cfg.i18n.couponHintApplied
+						: (d.autoapply ? cfg.i18n.couponHintAuto : cfg.i18n.couponHint);
+
+					couponBox.appendChild(intro);
+					couponBox.appendChild(buildCouponRow(d.coupon));
+					var minimumLine = buildMinimumLine(d.minimum);
+					if (minimumLine) {
+						couponBox.appendChild(minimumLine);
+					}
+					couponBox.appendChild(hint);
+
+					// Only promised when it actually happened — with storage
+					// blocked there is no tab to come back to.
+					if (kept) {
+						var savedNote = document.createElement('div');
+						savedNote.className = 'brikpanel-cartab-coupon-saved';
+						savedNote.textContent = cfg.i18n.couponSaved;
+						couponBox.appendChild(savedNote);
+					}
+
+					modal.appendChild(couponBox);
+					frameCode(couponBox.querySelector('.brikpanel-cartab-coupon-code'), false);
+					return kept;
+				}
+
 				// Inline !important because the form's own display rule is
 				// !important (theme hardening) and would beat [hidden].
 				form.style.setProperty('display', 'none', 'important');
@@ -1622,6 +1677,10 @@
 						editNote.className = 'brikpanel-cartab-editmail-note';
 						editNote.setAttribute('aria-live', 'polite');
 
+						// Built on demand: the "not eligible" line that replaces the
+						// inbox notice when a corrected address gets no code.
+						var editWithheld = null;
+
 						editForm.appendChild(editInput);
 						editForm.appendChild(editSave);
 						editForm.appendChild(editCancel);
@@ -1660,16 +1719,62 @@
 							editCancel.disabled = true;
 							updateEmail(data.id, next).then(function (json) {
 								var d = (json && json.data) ? json.data : {};
-								var addr = d.email || next;
-								editForm.hidden = true;
-								editToggle.hidden = false;
-								editToggle.disabled = true;
-								editToggle.textContent = cfg.i18n.editDone;
-								editNote.textContent = '';
-								emailedIntro.textContent = cfg.i18n.couponEmailed.replace('%s', addr);
-								// Give the reader time again after a correction.
-								window.clearTimeout(autoClose);
-								autoClose = window.setTimeout(function () { closePopup(true); }, 9000);
+								// Each answer says only what actually happened to
+								// the corrected address.
+								if (d.coupon_emailed) {
+									editForm.hidden = true;
+									editToggle.hidden = false;
+									editToggle.disabled = true;
+									editToggle.textContent = cfg.i18n.editDone;
+									editNote.textContent = '';
+									if (editWithheld) {
+										editWithheld.hidden = true;
+									}
+									emailedIntro.hidden = false;
+									emailedHint.hidden = false;
+									emailedIntro.textContent = cfg.i18n.couponEmailed.replace('%s', d.email || next);
+									// Give the reader time again after a correction.
+									window.clearTimeout(autoClose);
+									autoClose = window.setTimeout(function () { closePopup(true); }, 9000);
+								} else if (d.coupon_withheld) {
+									// No code for this address, so nothing was sent.
+									// The edit link stays, for one more correction.
+									editForm.hidden = true;
+									editToggle.hidden = false;
+									editSave.disabled = false;
+									editCancel.disabled = false;
+									editNote.textContent = '';
+									emailedIntro.hidden = true;
+									emailedHint.hidden = true;
+									if (!editWithheld) {
+										editWithheld = buildWithheldLine();
+										if (editWithheld) {
+											emailedBox.insertBefore(editWithheld, editWrap);
+										}
+									}
+									if (editWithheld) {
+										editWithheld.hidden = false;
+									}
+									window.clearTimeout(autoClose);
+									autoClose = window.setTimeout(function () { closePopup(true); }, 9000);
+								} else if (typeof d.coupon === 'string' && d.coupon !== '') {
+									// The corrected address gets its code on screen
+									// (a companion plugin did not email this one), so
+									// show and keep the code instead of an inbox notice.
+									if (emailedBox.parentNode) {
+										emailedBox.parentNode.removeChild(emailedBox);
+									}
+									var kept = appendCouponBox(d);
+									window.clearTimeout(autoClose);
+									autoClose = window.setTimeout(function () {
+										closePopup(kept ? 'collapse' : true);
+									}, 9000);
+								} else {
+									editSave.disabled = false;
+									editCancel.disabled = false;
+									editNote.textContent = cfg.i18n.error;
+									editNote.className = 'brikpanel-cartab-editmail-note is-error';
+								}
 							}).catch(function () {
 								editSave.disabled = false;
 								editCancel.disabled = false;
@@ -1683,52 +1788,30 @@
 				}
 
 				var hasCoupon = data && data.coupon;
-				// Keep the code past this one screen. Nothing is stored on the
-				// emailed path: there is no code in the payload, and the inbox is
-				// where that visitor is being sent.
-				var stored = hasCoupon ? saveCoupon(data) : null;
-				if (hasCoupon) {
-					var couponBox = document.createElement('div');
-					couponBox.className = 'brikpanel-cartab-coupon';
+				// Nothing is stored on the emailed path: there is no code in the
+				// payload, and the inbox is where that visitor is being sent.
+				var stored = hasCoupon ? appendCouponBox(data) : null;
 
-					var intro = document.createElement('div');
-					intro.className = 'brikpanel-cartab-coupon-intro';
-					intro.textContent = cfg.i18n.couponIntro;
-
-					var hint = document.createElement('div');
-					hint.className = 'brikpanel-cartab-coupon-hint';
-					hint.textContent = data.applied ? cfg.i18n.couponHintApplied
-						: (data.autoapply ? cfg.i18n.couponHintAuto : cfg.i18n.couponHint);
-
-					couponBox.appendChild(intro);
-					couponBox.appendChild(buildCouponRow(data.coupon));
-					var minimumLine = buildMinimumLine(data.minimum);
-					if (minimumLine) {
-						couponBox.appendChild(minimumLine);
-					}
-					couponBox.appendChild(hint);
-
-					// Only promised when it actually happened — with storage
-					// blocked there is no tab to come back to.
-					if (stored) {
-						var savedNote = document.createElement('div');
-						savedNote.className = 'brikpanel-cartab-coupon-saved';
-						savedNote.textContent = cfg.i18n.couponSaved;
-						couponBox.appendChild(savedNote);
-					}
-
-					modal.appendChild(couponBox);
-					frameCode(couponBox.querySelector('.brikpanel-cartab-coupon-code'), false);
+				// The merchant's rules kept the code back: one quiet line under
+				// the thank-you instead of a code (nothing is stored, no tab).
+				var withheld = !!(data && data.coupon_withheld) && !hasCoupon && !emailedCoupon;
+				var withheldLine = withheld ? buildWithheldLine() : null;
+				if (withheldLine) {
+					var withheldBox = document.createElement('div');
+					withheldBox.className = 'brikpanel-cartab-coupon';
+					withheldBox.appendChild(withheldLine);
+					modal.appendChild(withheldBox);
 				}
 
 				// Auto-close: longer when a coupon (or the emailed-coupon
-				// notice) is on screen so the visitor has time to read it.
-				// Stored so the edit-email flow can defer it while correcting.
+				// notice, or the no-code line) is on screen so the visitor has
+				// time to read it. Stored so the edit-email flow can defer it
+				// while correcting.
 				autoClose = window.setTimeout(function () {
 					// With a code saved the popup shrinks into the tab that now
 					// holds it. Everything else keeps closing for good.
 					closePopup(stored ? 'collapse' : true);
-				}, (hasCoupon || emailedCoupon) ? 9000 : 2500);
+				}, (hasCoupon || emailedCoupon) ? 9000 : (withheldLine ? 6000 : 2500));
 			}
 
 			form.addEventListener('submit', function (e) {

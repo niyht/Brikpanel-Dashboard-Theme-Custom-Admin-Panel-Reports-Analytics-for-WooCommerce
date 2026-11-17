@@ -595,6 +595,116 @@ function brikpanel_nav_inline_title( $title ) {
 }
 
 /**
+ * The number a menu title's count bubbles show, 0 when it shows none.
+ *
+ * Every plugin writes its own bubble into its title: WordPress puts the update
+ * total on Dashboard > Updates only, WooCommerce the pending reviews on
+ * Products > Reviews only, Wordfence and Yoast on their own top-level name. A
+ * bubble is an outermost span whose class names a counter (the sidebar styles
+ * the same spans, brikpanel-navigation.css); its value is its visible digits,
+ * so a screen-reader text beside the number ("2 notifications") is skipped and
+ * "1,234" reads as 1234. The digits, not the count-N class: WordPress's comment
+ * script changes the number in place and leaves the class as it was. A count-0
+ * bubble is hidden by WordPress and counts as none.
+ *
+ * The sidebar script recounts the same way when WordPress changes a bubble
+ * after the page loaded (brikpanel_render_navigation()); keep the two in step.
+ *
+ * @param string $title Menu title HTML.
+ * @return int
+ */
+function brikpanel_nav_title_count( $title ) {
+	$title = (string) $title;
+	if ( false === stripos( $title, '<span' ) ) {
+		return 0;
+	}
+	// Span tags, any other tag (skipped, so its attributes never read as text), text.
+	if ( ! preg_match_all( '#<(/?)span\b((?:[^>"\']++|"[^"]*"|\'[^\']*\')*)>|<[^>]*>|([^<]+)#i', $title, $tokens, PREG_SET_ORDER ) ) {
+		return 0;
+	}
+	$total  = 0;
+	$stack  = array(); // One entry per open span: 'bubble' (opens one), 'skip' (adds no text).
+	$depth  = 0;       // Open bubbles; only the outermost one counts.
+	$hidden = 0;       // Open spans whose text is not the number (screen-reader text, a count-0 bubble).
+	$digits = '';
+	foreach ( $tokens as $token ) {
+		if ( isset( $token[3] ) ) {
+			if ( $depth > 0 && 0 === $hidden ) {
+				$digits .= preg_replace( '/\D+/', '', html_entity_decode( $token[3], ENT_QUOTES, 'UTF-8' ) );
+			}
+			continue;
+		}
+		if ( ! isset( $token[1] ) ) {
+			continue;
+		}
+		if ( '/' === $token[1] ) {
+			$open = array_pop( $stack );
+			if ( null === $open ) {
+				continue;
+			}
+			$hidden -= $open['skip'] ? 1 : 0;
+			if ( $open['bubble'] ) {
+				--$depth;
+				if ( 0 === $depth ) {
+					$total += '' === $digits ? 0 : (int) substr( $digits, 0, 9 );
+					$digits = '';
+				}
+			}
+			continue;
+		}
+		$class  = preg_match( '/\bclass\s*=\s*(?:"([^"]*)"|\'([^\']*)\')/i', $token[2], $m ) ? ( isset( $m[2] ) && '' !== $m[2] ? $m[2] : $m[1] ) : '';
+		$bubble = (bool) preg_match( '/count|awaiting-mod|update-plugins|menu-counter/i', $class );
+		$skip   = (bool) preg_match( '/(?:^|\s)(?:screen-reader-text|count-0)(?:\s|$)/i', $class );
+		$stack[] = array(
+			'bubble' => $bubble,
+			'skip'   => $skip,
+		);
+		$depth  += $bubble ? 1 : 0;
+		$hidden += $skip ? 1 : 0;
+		if ( $bubble && 1 === $depth ) {
+			$digits = '';
+		}
+	}
+	return $total;
+}
+
+/**
+ * What a sidebar row stands for in a sum: its own number, or when its title
+ * shows none, the numbers of the rows under it.
+ *
+ * @param string $title    The row's title HTML.
+ * @param array  $children $submenu rows listed under it.
+ * @return int
+ */
+function brikpanel_nav_row_count( $title, array $children = array() ) {
+	$own = brikpanel_nav_title_count( $title );
+	if ( $own > 0 ) {
+		return $own;
+	}
+	$sum = 0;
+	foreach ( $children as $child ) {
+		$sum += is_array( $child ) && isset( $child[0] ) ? brikpanel_nav_title_count( $child[0] ) : 0;
+	}
+	return $sum;
+}
+
+/**
+ * The bubble that shows a closed row's or heading's sum next to its name.
+ * brikpanel-navigation.css hides it while the row or heading is open, when the
+ * numbers it adds up are on screen themselves.
+ *
+ * @param int $count Sum.
+ * @return string Empty for 0.
+ */
+function brikpanel_nav_sum_html( $count ) {
+	$count = (int) $count;
+	if ( $count <= 0 ) {
+		return '';
+	}
+	return '<span class="brikpanel-nav-sum">' . esc_html( brikpanel_number( $count ) ) . '</span>';
+}
+
+/**
  * One row of a sidebar dropdown, the way the top-level loop prints it.
  *
  * Split out of brikpanel_get_navigation_items() so the same markup, link and
@@ -1089,6 +1199,8 @@ function brikpanel_nav_render_more_row( array $entry ) {
 	$title = wptexturize( brikpanel_nav_inline_title( isset( $row[0] ) ? $row[0] : '' ) );
 	$state = $entry['open'] ? 'brikpanel-has-open-submenu' : 'wp-not-current-submenu';
 	$icon  = brikpanel_nav_ame_active() ? '' : '<img src="' . brikpanel_nav_icon_src( 'default' ) . '" width="12">';
+	// Closed, the row shows the sum of its pages' numbers, like a top-level row.
+	$sum   = brikpanel_nav_title_count( $title ) > 0 ? '' : brikpanel_nav_sum_html( brikpanel_nav_row_count( '', $entry['children'] ) );
 
 	$html = "
 		<li class='brikpanel-more-promoted brikpanel-more-nested wp-has-submenu $state'>
@@ -1096,7 +1208,7 @@ function brikpanel_nav_render_more_row( array $entry ) {
 				<div class='brikpanel-menu-icon-title-container'>
 					$icon
 					<a href='" . esc_url( $entry['href'] ) . "' class='brikpanel-more-promoted'>
-						$title
+						$title$sum
 					</a>
 				</div>
 				<img class=\"brikpanel-menu-chevron\" src=\"" . brikpanel_nav_icon_src( 'chevron-down' ) . "\" width=\"10\" height=\"10\">
@@ -1164,29 +1276,177 @@ function brikpanel_render_navigation() {
                     }
                 });
             }
-            
+
+            // The sums beside closed rows and headings (brikpanel_nav_sum_html())
+            // follow the numbers WordPress changes after the page loaded: a plugin
+            // or theme updated from its list, a comment approved. Counted the way
+            // brikpanel_nav_title_count() counts in PHP; keep the two in step.
+            if (brikpanelNavigation && window.MutationObserver) {
+                const sumClass = "brikpanel-nav-sum";
+                const bubbleRe = /count|awaiting-mod|update-plugins|menu-counter/i;
+                const quietRe = /(?:^|\s)(?:screen-reader-text|count-0)(?:\s|$)/i;
+                const isSpan = function (el, re) {
+                    return el.tagName === "SPAN" && re.test(el.getAttribute("class") || "");
+                };
+                // A link title\'s own number: its outermost bubbles\' visible digits.
+                const ownCount = function (link) {
+                    let total = 0;
+                    for (const span of link.querySelectorAll("span")) {
+                        if (!isSpan(span, bubbleRe) || span.closest("." + sumClass)) {
+                            continue;
+                        }
+                        let inner = false;
+                        for (let p = span.parentElement; p && p !== link; p = p.parentElement) {
+                            if (isSpan(p, bubbleRe)) {
+                                inner = true;
+                                break;
+                            }
+                        }
+                        if (inner) {
+                            continue;
+                        }
+                        let digits = "";
+                        const walker = document.createTreeWalker(span, NodeFilter.SHOW_TEXT);
+                        while (walker.nextNode()) {
+                            let quiet = false;
+                            for (let p = walker.currentNode.parentElement; p && p !== link; p = p.parentElement) {
+                                if (isSpan(p, quietRe)) {
+                                    quiet = true;
+                                    break;
+                                }
+                            }
+                            if (!quiet) {
+                                digits += walker.currentNode.nodeValue.replace(/\D+/g, "");
+                            }
+                        }
+                        total += digits ? parseInt(digits.slice(0, 9), 10) : 0;
+                    }
+                    return total;
+                };
+                const rowLink = function (li) {
+                    return li.querySelector(":scope > .brikpanel-menu-icon-title-chevron-container > .brikpanel-menu-icon-title-container > a, :scope > .brikpanel-menu-icon-title-container > a, :scope > a");
+                };
+                // A row stands for its own number, or for its list\'s when it has none.
+                const rowCount = function (li) {
+                    const link = rowLink(li);
+                    const own = link ? ownCount(link) : 0;
+                    const list = own > 0 ? null : li.querySelector(":scope > ul");
+                    return list ? listCount(list) : own;
+                };
+                const listCount = function (list) {
+                    let total = 0;
+                    for (const child of list.children) {
+                        if (child.tagName === "LI") {
+                            total += rowCount(child);
+                        }
+                    }
+                    return total;
+                };
+                const setSum = function (host, before, count) {
+                    let sum = host.querySelector(":scope > ." + sumClass);
+                    if (count <= 0) {
+                        if (sum) {
+                            sum.remove();
+                        }
+                        return;
+                    }
+                    // The shared number format where the page loaded it. Below 1000
+                    // a whole number has no separator in any store format, so it is
+                    // the same text without it; a larger one keeps what PHP printed.
+                    const text = window.brikpanelFormat && typeof window.brikpanelFormat.number === "function"
+                        ? window.brikpanelFormat.number(count)
+                        : (count < 1000 ? String(count) : "");
+                    if (!text) {
+                        return;
+                    }
+                    if (!sum) {
+                        sum = document.createElement("span");
+                        sum.className = sumClass;
+                        host.insertBefore(sum, before);
+                    }
+                    if (sum.textContent !== text) {
+                        sum.textContent = text;
+                    }
+                };
+                const recount = function () {
+                    for (const li of brikpanelNavigation.querySelectorAll("li")) {
+                        const list = li.querySelector(":scope > ul");
+                        const link = li.querySelector(":scope > .brikpanel-menu-icon-title-chevron-container > .brikpanel-menu-icon-title-container > a");
+                        if (list && link) {
+                            setSum(link, null, ownCount(link) > 0 ? 0 : listCount(list));
+                        }
+                    }
+                    for (const heading of brikpanelNavigation.querySelectorAll(".brikpanel-menu-heading")) {
+                        const box = heading.nextElementSibling;
+                        if (!box || !box.matches(".brikpanel-site-management-items, .brikpanel-menu-group-items")) {
+                            continue;
+                        }
+                        let total = 0;
+                        for (const li of box.querySelectorAll(":scope > li, :scope > .brikpanel-menu-group-items > li")) {
+                            total += rowCount(li);
+                        }
+                        setSum(heading, heading.querySelector(":scope > img"), total);
+                    }
+                };
+                // Only a change inside a title counts; the sums this writes do not.
+                let queued = false;
+                new MutationObserver(function (records) {
+                    if (queued) {
+                        return;
+                    }
+                    for (const record of records) {
+                        const node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+                        if (!node || !node.closest("a") || node.closest("." + sumClass)) {
+                            continue;
+                        }
+                        if (record.type === "childList") {
+                            const moved = Array.from(record.addedNodes).concat(Array.from(record.removedNodes));
+                            if (moved.length && moved.every(function (n) { return n.nodeType === 1 && n.classList.contains(sumClass); })) {
+                                continue;
+                            }
+                        }
+                        queued = true;
+                        window.requestAnimationFrame(function () {
+                            queued = false;
+                            recount();
+                        });
+                        return;
+                    }
+                }).observe(brikpanelNavigation, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ["class"] });
+            }
+
             const toggleButton = document.querySelector(".brikpanel-site-management-toggle");
             const itemsContainer = document.querySelector(".brikpanel-site-management-items");
+            // Marked closed with it: the heading shows its sum only then.
+            const siteManagementHeading = toggleButton ? toggleButton.closest(".brikpanel-menu-heading") : null;
+            const markSiteManagement = function (collapsed) {
+                if (siteManagementHeading) {
+                    siteManagementHeading.classList.toggle("brikpanel-menu-heading--collapsed", collapsed);
+                }
+            };
 
             if (toggleButton && itemsContainer) {
-                
+
                 // Sayfa yüklendiğinde hafızadaki tercihi uygula (varsayılan: kapalı)
                 if (localStorage.getItem("brikpanelSiteManagementCollapsed") !== "false") {
                     itemsContainer.style.display = "none";
                     toggleButton.classList.add("collapsed");
+                    markSiteManagement(true);
                 }
 
                 toggleButton.addEventListener("click", function(event) {
                     event.preventDefault();
                     const isCollapsed = itemsContainer.style.display === "none";
-                    
+
                     if (isCollapsed) {
                         itemsContainer.style.display = "";
                         toggleButton.classList.remove("collapsed");
+                        markSiteManagement(false);
                         localStorage.setItem("brikpanelSiteManagementCollapsed", "false");
                     } else {
                         itemsContainer.style.display = "none";
                         toggleButton.classList.add("collapsed");
+                        markSiteManagement(true);
                         localStorage.setItem("brikpanelSiteManagementCollapsed", "true");
                     }
                 });
@@ -1222,6 +1482,7 @@ function brikpanel_render_navigation() {
                 const setCollapsed = function (collapsed) {
                     groupItems.style.display = collapsed ? "none" : "";
                     groupHeading.setAttribute("aria-expanded", collapsed ? "false" : "true");
+                    groupHeading.classList.toggle("brikpanel-menu-heading--collapsed", collapsed);
                     if (groupToggle) {
                         groupToggle.classList.toggle("collapsed", collapsed);
                     }
@@ -1321,6 +1582,20 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			$brikpanel_group_offset = 0;
 			$brikpanel_group_rows   = 0;
 
+			// A closed heading shows the sum of the numbers in its rows next to its
+			// name. The heading is printed before its rows, so it carries a marker
+			// (control characters no menu title holds) that is swapped for the sum,
+			// or nothing, at the very end. Not before: every cut and spacer removal
+			// below works on byte offsets into $html, and a swap in the middle of
+			// the loop would shift them.
+			//   $brikpanel_group_count — the open group's rows' numbers so far
+			//   $brikpanel_group_mark  — the open group heading's marker
+			//   $brikpanel_heading_sums — marker => sum, for every heading closed
+			$brikpanel_group_count  = 0;
+			$brikpanel_group_mark   = '';
+			$brikpanel_group_seq    = 0;
+			$brikpanel_heading_sums = array();
+
 			// The same for the "Site management" heading. It is printed on its
 			// anchor row and its wrapper runs to the end of the menu, so it is
 			// judged once the loop is done: with no row this user can open after
@@ -1328,6 +1603,8 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			$brikpanel_sm_open   = false;
 			$brikpanel_sm_offset = 0;
 			$brikpanel_sm_rows   = 0;
+			$brikpanel_sm_count  = 0;
+			$brikpanel_sm_mark   = "\x1Fbrikpanel-nav-sum-sm\x1F";
 
 			// Spacers printed since the last row with a link, as [start, end)
 			// offsets into $html, and whether a heading was dropped after them. A
@@ -1358,7 +1635,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			// the current user (an access plugin such as AAM, or BrikPanel's own
 			// rules), and a lone heading with a toggle that opens nothing, or only a
 			// divider, is worse than no heading at all.
-			$brikpanel_close_group = function () use ( &$html, &$brikpanel_group_open, &$brikpanel_group_offset, &$brikpanel_group_rows, $brikpanel_cut ) {
+			$brikpanel_close_group = function () use ( &$html, &$brikpanel_group_open, &$brikpanel_group_offset, &$brikpanel_group_rows, &$brikpanel_group_count, &$brikpanel_group_mark, &$brikpanel_heading_sums, $brikpanel_cut ) {
 				if ( ! $brikpanel_group_open ) {
 					return;
 				}
@@ -1368,10 +1645,12 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					// heading, its wrapper and any spacer in it.
 					$brikpanel_cut( $brikpanel_group_offset );
 				} else {
+					$brikpanel_heading_sums[ $brikpanel_group_mark ] = $brikpanel_group_count;
 					$html .= '</div>';
 				}
-				$brikpanel_group_open = false;
-				$brikpanel_group_rows = 0;
+				$brikpanel_group_open  = false;
+				$brikpanel_group_rows  = 0;
+				$brikpanel_group_count = 0;
 			};
 
 			// WooCommerce's Analytics top-level, whatever report this version names
@@ -1434,7 +1713,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					$brikpanel_sitemgmt_label = function_exists( 'brikpanel_nav_config_sitemgmt_label' )
 						? brikpanel_nav_config_sitemgmt_label()
 						: __( 'Site management', 'brikpanel' );
-					$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
+					$heading = '<span class="brikpanel-menu-heading">' . esc_html( $brikpanel_sitemgmt_label ) . $brikpanel_sm_mark . '<img class="brikpanel-site-management-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10"></span><div class="brikpanel-site-management-items">';
 					// A user-created group that is still open must end BEFORE the
 					// "Site management" wrapper starts, otherwise Site management
 					// would nest inside it and collapsing the user's group would
@@ -1448,6 +1727,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 					$brikpanel_sm_open   = true;
 					$brikpanel_sm_offset = strlen( $html );
 					$brikpanel_sm_rows   = 0;
+					$brikpanel_sm_count  = 0;
 				}
 
 				// $submenu_items: the children the dropdown shows. $brikpanel_header_row:
@@ -1699,6 +1979,32 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		 */
 		$title = apply_filters( 'brikpanel_nav_item_title', $title, $item_slug );
 
+		// The numbers a row holds (wp.org support, 2026-11-13). A plugin puts its
+		// count bubble where it likes: WooCommerce's pending reviews sit on
+		// Products > Reviews, WordPress's updates on Dashboard > Updates. A closed
+		// row hid them, so a row whose own title shows no number gets the sum of
+		// its list's numbers next to its name, hidden by the stylesheet while the
+		// list is open. $brikpanel_row_count is what the row adds to the sum of a
+		// heading it sits under.
+		$brikpanel_own_count  = brikpanel_nav_title_count( $title );
+		$brikpanel_list_count = 0;
+		if ( $brikpanel_more_plan ) {
+			// "More": a menu moved there counts like a row of its own.
+			foreach ( $brikpanel_more_plan['rows'] as $brikpanel_more_entry ) {
+				$brikpanel_list_count += brikpanel_nav_row_count(
+					isset( $brikpanel_more_entry['row'][0] ) ? $brikpanel_more_entry['row'][0] : '',
+					'' === $brikpanel_more_entry['parent'] ? array() : $brikpanel_more_entry['children']
+				);
+			}
+		} else {
+			$brikpanel_list_count = brikpanel_nav_row_count( '', $submenu_items );
+		}
+		$brikpanel_row_count = $brikpanel_own_count > 0 ? $brikpanel_own_count : $brikpanel_list_count;
+		// A silent row prints no label to put the sum on: its rows are on screen.
+		$brikpanel_sum_html = ( $brikpanel_own_count > 0 || empty( $submenu_items ) || $brikpanel_wc_silent )
+			? ''
+			: brikpanel_nav_sum_html( $brikpanel_list_count );
+
 		// Separator için erişilebilirlik ayarı:
 		if ( $is_separator ) {
 			$aria_hidden = ' aria-hidden="true"';
@@ -1769,11 +2075,14 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 			$brikpanel_group_class  = 'brikpanel-navgroup-' . $brikpanel_group_id;
 			$brikpanel_group_offset = strlen( $html );
 			$brikpanel_group_rows   = 0;
+			$brikpanel_group_count  = 0;
+			$brikpanel_group_mark   = "\x1Fbrikpanel-nav-sum-g" . ( ++$brikpanel_group_seq ) . "\x1F";
 			$brikpanel_group_open   = true;
 			// `role` survives wp_kses()'s global-attribute list; `tabindex` does
 			// not, so the collapse script adds it at runtime instead.
 			$html .= '<span class="brikpanel-menu-heading brikpanel-menu-group-heading ' . esc_attr( $brikpanel_group_class ) . '" role="button">'
 				. esc_html( $brikpanel_group_label )
+				. $brikpanel_group_mark
 				. '<img class="brikpanel-menu-group-toggle" src="' . brikpanel_nav_icon_src( 'chevron-down' ) . '" width="10" height="10">'
 				. '</span><div class="brikpanel-menu-group-items ' . esc_attr( $brikpanel_group_class ) . '">';
 			continue;
@@ -1787,9 +2096,11 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		if ( ! $brikpanel_row_is_decor ) {
 			if ( $brikpanel_group_open ) {
 				$brikpanel_group_rows++;
+				$brikpanel_group_count += $brikpanel_row_count;
 			}
 			if ( $brikpanel_sm_open ) {
 				$brikpanel_sm_rows++;
+				$brikpanel_sm_count += $brikpanel_row_count;
 			}
 			$brikpanel_tail_decor   = array();
 			$brikpanel_tail_dropped = false;
@@ -1844,6 +2155,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		$has_custom_icon = array(
 			'edit.php?post_type=product' => 'products',
 			'brikpanel-customers' => 'customers',
+			'brikpanel-returns' => 'returns',
 			'brikpanel-google-sheets' => 'google-sheets',
 			'brikpanel-vendors' => 'invoice',
 			'brikpanel-expenses' => 'payments',
@@ -1961,7 +2273,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 							<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
 								$icon
 								<a href='admin.php?page={$brikpanel_header_row[2]}' $class $style $aria_attributes>
-									$title
+									$title$brikpanel_sum_html
 								</a>
 							</div>
 					";
@@ -1976,7 +2288,7 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 						<div class='brikpanel-menu-icon-title-container $toplevel_page_class'>
 							$icon
 							<a href='{$parent_href}' $class $aria_attributes>
-								$title
+								$title$brikpanel_sum_html
 							</a>
 						</div>
 				";
@@ -2092,6 +2404,17 @@ function brikpanel_get_navigation_items( $submenu_as_parent = true ) {
 		foreach ( array_reverse( $brikpanel_tail_decor ) as $brikpanel_span ) {
 			$html = substr( $html, 0, $brikpanel_span[0] ) . substr( $html, $brikpanel_span[1] );
 		}
+	}
+
+	// Last, with no byte offset left to keep: the headings' sums in place of
+	// their markers, "Site management" now that all its rows are counted. A
+	// heading that was cut took its marker with it; any other one goes empty.
+	if ( false !== strpos( $html, "\x1F" ) ) {
+		$brikpanel_heading_sums[ $brikpanel_sm_mark ] = $brikpanel_sm_count;
+		$html  = strtr( $html, array_map( 'brikpanel_nav_sum_html', $brikpanel_heading_sums ) );
+		$clean = preg_replace( '/\x1Fbrikpanel-nav-sum-[a-z0-9]+\x1F/', '', $html );
+		// A regex failure returns null: keep the sidebar rather than print nothing.
+		$html = null === $clean ? $html : $clean;
 	}
 
 	if ( brikpanel_nav_ame_active() ) {

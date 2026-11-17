@@ -407,6 +407,52 @@ class Brikpanel_Cart_Abandonment {
 	}
 
 	/**
+	 * Whether an email address gets the signup coupon only once ("One code
+	 * per email", 3.3.50). On unless the merchant turns it off: a second code
+	 * for an address that already used or let lapse its first one is a gap
+	 * nobody configured on purpose. Public and named so a companion plugin can
+	 * tell whether this BrikPanel has the rule before offering the box.
+	 *
+	 * @since 3.3.50
+	 * @return bool
+	 */
+	public static function popup_coupon_once() {
+		/**
+		 * Override "One code per email".
+		 *
+		 * Named apart from the option id on purpose, so a call site can never
+		 * confuse it with WordPress' own option_{$id} filter.
+		 *
+		 * @since 3.3.50
+		 * @param bool $enabled Whether an address gets the signup code once.
+		 */
+		return (bool) apply_filters(
+			'brikpanel_cartab_popup_coupon_once_enabled',
+			get_option( 'brikpanel_cartab_popup_coupon_once', 'yes' ) === 'yes'
+		);
+	}
+
+	/**
+	 * Whether the signup coupon is kept for addresses with no order yet ("New
+	 * customers only", 3.3.50). Off unless the merchant turns it on.
+	 *
+	 * @since 3.3.50
+	 * @return bool
+	 */
+	public static function popup_coupon_new_customers() {
+		/**
+		 * Override "New customers only".
+		 *
+		 * @since 3.3.50
+		 * @param bool $enabled Whether addresses with an order get no code.
+		 */
+		return (bool) apply_filters(
+			'brikpanel_cartab_popup_coupon_new_customers_enabled',
+			get_option( 'brikpanel_cartab_popup_coupon_new_customers', 'no' ) === 'yes'
+		);
+	}
+
+	/**
 	 * Whether the popup waits for the visitor to answer the cookie banner
 	 * before it opens. Split out from popup_config() for the same reason
 	 * popup_enabled() is: it is read on the enqueue path, not while building
@@ -580,6 +626,11 @@ class Brikpanel_Cart_Abandonment {
 			/* translators: %s: the visitor's email address */
 			'couponEmailed'     => __( 'We sent your discount code to %s', 'brikpanel' ),
 			'couponEmailedHint' => __( 'Check your inbox. If it landed in the Promotions tab, drag it to Primary so you never miss it.', 'brikpanel' ),
+			// Shown instead of a code when "One code per email" or "New customers
+			// only" keeps the code back. One sentence for both on purpose: the
+			// popup is public, so it must not tell a stranger which addresses
+			// already bought here.
+			'couponWithheld'    => __( 'This email address is not eligible for the signup discount.', 'brikpanel' ),
 			'editEmail'         => __( 'Wrong address? Edit it', 'brikpanel' ),
 			'editSave'          => __( 'Update & resend', 'brikpanel' ),
 			'editCancel'        => __( 'Cancel', 'brikpanel' ),
@@ -1683,12 +1734,14 @@ class Brikpanel_Cart_Abandonment {
 	/**
 	 * Mint (or reuse) the signup coupon for a popup email and decide how it
 	 * reaches the visitor. Returns the response fragment the popup consumes:
-	 * either an inline code or an "emailed" notice. Shared by the initial
-	 * capture and the "edit email" correction so both behave identically.
+	 * an inline code, an "emailed" notice, or `coupon_withheld` when one of
+	 * the merchant's rules ("One code per email", "New customers only") keeps
+	 * the code back. Shared by the initial capture and the "edit email"
+	 * correction so both behave identically.
 	 *
 	 * @param string $email Validated, lowercased email.
 	 * @param int    $id    Cart-abandonment entry id.
-	 * @return array{coupon?:string,discount?:int,expires?:int,minimum?:string,autoapply?:bool,applied?:bool,coupon_emailed?:bool,email?:string}
+	 * @return array{coupon?:string,discount?:int,expires?:int,minimum?:string,autoapply?:bool,applied?:bool,coupon_emailed?:bool,email?:string,coupon_withheld?:bool}
 	 *         `minimum` is the code's minimum spend as plain money text, set only when it has one.
 	 */
 	private static function deliver_popup_coupon( $email, $id ) {
@@ -1706,6 +1759,24 @@ class Brikpanel_Cart_Abandonment {
 		$coupon = self::get_or_create_popup_coupon( $email );
 		if ( ! $coupon ) {
 			return [];
+		}
+
+		// A rule kept the code back. Nothing reaches the delivery filter or the
+		// deferred action, so no companion plugin sends a code email. The reason
+		// stays on the server: the reply is the same for both rules, so the
+		// public endpoint cannot be used to learn who has ordered here.
+		if ( isset( $coupon['withheld'] ) ) {
+			/**
+			 * A popup signup got no code because of the merchant's rules.
+			 *
+			 * @since 3.3.50
+			 * @param string $reason 'once' (this address already had a signup
+			 *                       code) or 'customer' (it already has an order).
+			 * @param string $email  Lowercased captured email.
+			 * @param int    $id     Cart-abandonment entry id.
+			 */
+			do_action( 'brikpanel_cartab_popup_coupon_withheld', (string) $coupon['withheld'], $email, (int) $id );
+			return [ 'coupon_withheld' => true ];
 		}
 
 		/**
@@ -2170,13 +2241,26 @@ class Brikpanel_Cart_Abandonment {
 	 * Return (or lazily create) the signup coupon for an email: percent
 	 * discount at the configured rate, single use, restricted to that email,
 	 * valid for 30 days, with the configured minimum spend if there is one.
-	 * One live coupon per email — a fresh one is only generated when the
-	 * previous one was used or expired.
+	 *
+	 * One live coupon per email: a still-valid code issued earlier always
+	 * comes back, whatever the rules say, because handing it back creates no
+	 * new discount. Only when a fresh code would be minted do the merchant's
+	 * rules get a say (since 3.3.50): "One code per email" (on by default)
+	 * refuses an address that already had a signup code, used or not, and
+	 * "New customers only" refuses an address that already has an order.
+	 * Without them a fresh code is generated once the previous one was used
+	 * or expired, as before.
+	 *
+	 * "Already had a code" is read from the signup codes still in the store,
+	 * drafts and the trash included. A code deleted for good (the trash
+	 * empties itself after 30 days) no longer counts, which the setting's
+	 * help text says.
 	 *
 	 * @param string $email Validated, lowercased email.
-	 * @return array{code:string,amount:int,expires:int,minimum:string}|null
+	 * @return array{code:string,amount:int,expires:int,minimum:string}|array{withheld:string}|null
 	 *         `expires` is a UTC timestamp, 0 when the coupon never expires.
 	 *         `minimum` is the code's own minimum spend ("25.50"), '' for none.
+	 *         `withheld` is the rule that kept a new code back: 'once' or 'customer'.
 	 */
 	private static function get_or_create_popup_coupon( $email ) {
 		$discount = self::popup_discount();
@@ -2184,11 +2268,16 @@ class Brikpanel_Cart_Abandonment {
 			return null;
 		}
 
-		// Reuse a still-valid coupon issued earlier to this email.
+		// Every signup code this address was ever given, newest first. One
+		// query answers both questions: is one still usable, and was one ever
+		// issued. ['any', 'trash'] works by exclusion (only auto-draft and the
+		// checkout draft are left out), so it also sees statuses another
+		// plugin added or left behind. Five rows, because with drafts and the
+		// trash in the window three newer ones could hide a valid code.
 		$existing_ids = get_posts( [
 			'post_type'   => 'shop_coupon',
-			'post_status' => 'publish',
-			'numberposts' => 3,
+			'post_status' => [ 'any', 'trash' ],
+			'numberposts' => 5,
 			'orderby'     => 'ID',
 			'order'       => 'DESC',
 			'fields'      => 'ids',
@@ -2197,7 +2286,9 @@ class Brikpanel_Cart_Abandonment {
 		] );
 		foreach ( $existing_ids as $coupon_id ) {
 			$coupon = new WC_Coupon( $coupon_id );
-			if ( ! $coupon->get_id() ) {
+			// Only a published code can be redeemed. The status comes with the
+			// coupon read, so this costs no extra query.
+			if ( ! $coupon->get_id() || 'publish' !== $coupon->get_status( 'edit' ) ) { // wc-floor-ignore: WC_Coupon::get_status() exists since WooCommerce 6.2, below the 9.2 floor.
 				continue;
 			}
 			$expires = $coupon->get_date_expires();
@@ -2218,6 +2309,13 @@ class Brikpanel_Cart_Abandonment {
 					'minimum' => self::sanitize_popup_coupon_minimum( $coupon->get_minimum_amount( 'edit' ) ),
 				];
 			}
+		}
+
+		// Nothing to hand back. Before a new code is minted, the merchant's
+		// rules decide whether this address may have one.
+		$withheld = self::popup_coupon_withheld_reason( $email, ! empty( $existing_ids ) );
+		if ( '' !== $withheld ) {
+			return [ 'withheld' => $withheld ];
 		}
 
 		// Generate a unique, readable code: the merchant's start, then six
@@ -2267,6 +2365,81 @@ class Brikpanel_Cart_Abandonment {
 		}
 
 		return [ 'code' => $code, 'amount' => $discount, 'expires' => $expires_at, 'minimum' => $minimum ];
+	}
+
+	/**
+	 * Which of the merchant's rules keeps a new signup code from this
+	 * address, if any. Asked only when there is no valid code to hand back.
+	 * The cheap rule first: whether a code was ever issued is already known
+	 * from the lookup the caller just ran; the order lookup costs a query.
+	 *
+	 * @since 3.3.50
+	 * @param string $email         Validated, lowercased email.
+	 * @param bool   $issued_before Whether any signup code was ever given to it.
+	 * @return string 'once', 'customer', or '' when a code may be minted.
+	 */
+	private static function popup_coupon_withheld_reason( $email, $issued_before ) {
+		if ( $issued_before && self::popup_coupon_once() ) {
+			return 'once';
+		}
+		if ( self::popup_coupon_new_customers() && self::email_has_counted_order( $email ) ) {
+			return 'customer';
+		}
+		return '';
+	}
+
+	/**
+	 * Whether this address has an order the store counts as a purchase: the
+	 * statuses the Customers screen counts (the paid statuses chosen under
+	 * Analytics, plus refunded). Placed as a guest with this billing email,
+	 * or by the account that uses this email. A signed-in visitor's own,
+	 * different account is not asked: the setting talks about the address.
+	 *
+	 * Two single-key lookups through wc_get_orders(), so both order stores
+	 * answer from an index-friendly query, and the second runs only when an
+	 * account with this email exists. This sits on a public endpoint, so it
+	 * never runs an "any status" query by accident: an empty status list
+	 * means "every status" to WooCommerce, which is why an empty list here
+	 * answers false instead.
+	 *
+	 * @since 3.3.50
+	 * @param string $email Validated, lowercased email.
+	 * @return bool
+	 */
+	private static function email_has_counted_order( $email ) {
+		if ( '' === $email || ! function_exists( 'wc_get_orders' ) || ! function_exists( 'wc_get_order_statuses' )
+			|| ! function_exists( 'brikpanel_ltv_counted_statuses' ) ) {
+			return false;
+		}
+		$statuses = array_values( array_intersect(
+			brikpanel_ltv_counted_statuses(),
+			array_keys( wc_get_order_statuses() )
+		) );
+		if ( ! $statuses ) {
+			return false;
+		}
+
+		$query = [
+			'type'   => 'shop_order',
+			'status' => $statuses,
+			'limit'  => 1,
+			'return' => 'ids',
+		];
+		try {
+			if ( wc_get_orders( $query + [ 'billing_email' => $email ] ) ) {
+				return true;
+			}
+			$user = get_user_by( 'email', $email );
+			$uid  = $user ? absint( $user->ID ) : 0;
+			// Never ask for customer 0: that is every guest order.
+			if ( $uid > 0 && wc_get_orders( $query + [ 'customer_id' => $uid ] ) ) {
+				return true;
+			}
+		} catch ( Throwable $e ) {
+			// A failed lookup must not cost a new shopper their code.
+			unset( $e );
+		}
+		return false;
 	}
 
 	/**
@@ -5541,6 +5714,11 @@ class Brikpanel_Cart_Abandonment {
 			if ( '' !== self::popup_coupon_minimum() ) {
 				$fields['couponMinimum'] = [ 'label' => __( 'Minimum spend note', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
 			}
+			// Only while a rule can keep a code back: "One code per email" (on
+			// unless turned off) or "New customers only".
+			if ( self::popup_coupon_once() || self::popup_coupon_new_customers() ) {
+				$fields['couponWithheld'] = [ 'label' => __( 'Not eligible note', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
+			}
 			$fields['couponSaved']  = [ 'label' => __( 'Reopen note', 'brikpanel' ),        'type' => 'textarea', 'group' => 'system' ];
 			$fields['couponTeaser'] = [ 'label' => __( 'Floating tab after signup', 'brikpanel' ), 'type' => 'text', 'group' => 'system' ];
 			$fields['copy']         = [ 'label' => __( 'Copy button', 'brikpanel' ),        'type' => 'text', 'group' => 'system' ];
@@ -6027,6 +6205,25 @@ class Brikpanel_Cart_Abandonment {
 			'placeholder'       => __( 'No minimum', 'brikpanel' ),
 			'custom_attributes' => [ 'min' => 0, 'step' => 'any' ],
 			'css'               => 'width:150px;',
+		];
+		// The two code rules (3.3.50), right under the code's own rules. The
+		// first is on by default, also on stores that update: a second code
+		// for an address that already used its first is a gap, not a choice.
+		$fields[] = [
+			'title'    => __( 'One code per email', 'brikpanel' ),
+			'desc'     => __( 'Give each email address the signup code only once', 'brikpanel' ),
+			'desc_tip' => __( 'An address that already got a signup code, used or not, gets no new one. While its code is still valid, the popup shows that code again. Only codes still in your store count, the trash included.', 'brikpanel' ),
+			'id'       => 'brikpanel_cartab_popup_coupon_once',
+			'type'     => 'checkbox',
+			'default'  => 'yes',
+		];
+		$fields[] = [
+			'title'    => __( 'New customers only', 'brikpanel' ),
+			'desc'     => __( 'Give no signup code to email addresses that already have an order', 'brikpanel' ),
+			'desc_tip' => __( 'Counts the orders placed with this address or by its account, paid or refunded. The visitor is still subscribed, only without a code.', 'brikpanel' ),
+			'id'       => 'brikpanel_cartab_popup_coupon_new_customers',
+			'type'     => 'checkbox',
+			'default'  => 'no',
 		];
 		$fields[] = [
 			'title'    => __( 'Apply automatically', 'brikpanel' ),

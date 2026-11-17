@@ -2,7 +2,7 @@
 /**
  * Plugin Name: BrikPanel: WooCommerce Admin Dashboard Theme
  * Description: Beautiful and modern Shopify-style WooCommerce admin panel & dashboard, fully free, forever.
- * Version: 3.3.48
+ * Version: 3.3.53
  * Author: Brksoft
  * Author URI: https://brksoft.com/
  * Text Domain: brikpanel
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 // =============================================================================
 // CONSTANTS
 // =============================================================================
-define('BRIKPANEL_VERSION', '3.3.48');
+define('BRIKPANEL_VERSION', '3.3.53');
 define('BRIKPANEL_PATH', plugin_dir_path(__FILE__));
 define('BRIKPANEL_URL', plugin_dir_url(__FILE__));
 define('BRIKPANEL_BASENAME', plugin_basename(__FILE__));
@@ -325,6 +325,7 @@ function brikpanel_drop_subsite_tables($tables, $blog_id) {
         'brikpanel_ad_spend',
         'brikpanel_abandoned_carts',
         'brikpanel_push_devices',
+        'brikpanel_returns',
     ] as $name) {
         $tables[] = $prefix . $name;
     }
@@ -1440,6 +1441,9 @@ brikpanel_require('includes/brikpanel-net-watch.php');
 // Keep other plugins' (and the theme's) scripts off BrikPanel's own full-screen
 // app pages, where they serve no purpose and only slow the page. Their
 // stylesheets stay: their notices and icons still show on those pages.
+// The other way round too: plugins that strip other plugins' files from their
+// own pages (MailPoet, FluentCRM) get BrikPanel's folder on their allow lists,
+// so the side menu and the top bar keep their styles and scripts there.
 // =============================================================================
 brikpanel_require('includes/brikpanel-asset-isolation.php');
 
@@ -1540,6 +1544,16 @@ brikpanel_require('front-end/cart-abandonment/brikpanel-cart-abandonment.php');
 // and the settings fields self-gate to admin context inside the class.
 // =============================================================================
 brikpanel_require('front-end/cart-share/brikpanel-cart-share.php');
+
+// =============================================================================
+// CUSTOMER RETURNS — return requests from My Account and the Returns screen.
+//
+// Loaded outside the is_admin gate: the shopper's forms are handled on
+// template_redirect, and the emails and the refund hooks can fire on any
+// request. The settings section always registers; the account and admin
+// parts load only while returns are switched on (front-end/returns/).
+// =============================================================================
+brikpanel_require('front-end/returns/brikpanel-returns.php');
 
 // =============================================================================
 // PERSONAL CODE RESERVATIONS: a shopper whose payment did not finish gets
@@ -1913,6 +1927,11 @@ function brikpanel_create_table() {
     // The schema lives with its code (front-end/push/class-brikpanel-push-store.php).
     if (class_exists('Brikpanel_Push_Store')) {
         dbDelta(Brikpanel_Push_Store::schema_sql());
+    }
+    // Customer returns: one row per return request. The schema lives with its
+    // code (front-end/returns/class-brikpanel-returns-store.php).
+    if (class_exists('Brikpanel_Returns_Store')) {
+        dbDelta(Brikpanel_Returns_Store::schema_sql());
     }
 
     // Stamp the moment the recurring-expense engine became available. Only

@@ -4,7 +4,7 @@ Donate link: https://donate.stripe.com/14AdR9ghJcxKaAqdzbc3m00
 Tags: woocommerce dashboard, abandoned cart, cart abandonment, woocommerce bulk editor, order export
 Requires at least: 6.0
 Tested up to: 7.1
-Stable tag: 3.3.48
+Stable tag: 3.3.53
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -63,7 +63,7 @@ A free **woocommerce statistics plugin** and **woocommerce sales tracker** witho
 
 = Geographic Analytics: WooCommerce Sales by Country =
 
-A 3D globe plots where your orders, customers and visitors come from: **WooCommerce sales by country** and city, with **Top Countries** and **Top Cities** tables. Selling in one country? It zooms into a **sales map by state or province**.
+A 3D globe plots where your orders, customers and visitors come from: **WooCommerce sales by country** and city, with **Top Countries** and **Top Cities** tables. Click a country to open its **sales map by state or province** (49 countries); a store selling in one country opens on it.
 
 = Lightning-Fast Order Search: Cmd/Ctrl + K from Anywhere =
 
@@ -88,6 +88,10 @@ BrikPanel replaces the cluttered default orders page with a clean **woocommerce 
 
 A real **woocommerce order management plugin**, not a reskin.
 
+= WooCommerce Returns & Refunds (RMA) =
+
+Customers request a **WooCommerce return** from My Account or as a guest: items and quantities (variations too), a reason and photos. You approve, mark the items received and refund with restock in one place. Optional EU **withdrawal button** ("Withdraw from contract here").
+
 = WooCommerce Product List Plugin: Built for People Who Actually Edit Products =
 
 The default **WooCommerce product list** is fine for browsing, painful for editing. BrikPanel ships a complete **woocommerce product list plugin** that fixes it.
@@ -111,7 +115,6 @@ This is where BrikPanel pulls ahead of almost every other free **woocommerce bul
 * **Bulk update WooCommerce products** stock quantities (set quantity, add/subtract)
 * **WooCommerce bulk price by category**: pick a category, set a rule, every published product updates
 * **WooCommerce bulk sale price** updates (fixed or % off)
-* Confirmation dialog on every bulk action
 
 Now the part almost nobody else does for free: **variation support**.
 
@@ -127,15 +130,12 @@ Now the part almost nobody else does for free: **variation support**.
 The default WooCommerce add-product screen has 11 metaboxes, 7 tabs and 40+ fields. BrikPanel ships a complete **woocommerce product editor plugin** with the noise removed.
 
 * **Featured image + product gallery** with drag-and-drop upload, unlimited images, drag-to-reorder
-* Regular price, sale price with decimal validation
 * **Searchable category picker** with multi-select + **quick create category** without leaving the page
 * **Brand field**: the WooCommerce `product_brand` taxonomy is now first-class alongside categories and tags
-* Short description + full rich-text description
 * **SEO fields**: custom slug, meta title, meta description (SEO plugin needed), live Google SERP preview
 * **Full SEO plugin compatibility**: Yoast SEO, Rank Math, All in One SEO and SEOPress metaboxes (including the SEO score panel) render and save inside the BrikPanel product editor
 * Product type (Simple, Variable), **attribute management** with inline create
 * **Auto-generate variations** from attribute combinations, per-variation price/sale/SKU/stock
-* Duplicate any product in one click
 
 On by default. Keep the default WooCommerce product page if you prefer.
 
@@ -210,7 +210,6 @@ A **developer hooks and filters system** for agencies, actions and filters like 
 
 = Navigation & Admin UI Cleanup =
 
-* BrikPanel dashboard becomes the first admin menu item
 * **Simplified mode** (Modern navigation, on by default) folds the full WordPress menu into one Site management group, keeping BrikPanel + WooCommerce on top for non-technical clients
 
 == A Free, Self-Hosted WooCommerce Analytics & Inventory Suite ==
@@ -232,7 +231,7 @@ WooCommerce's built-in analytics are slow, refresh on a delay, and have no live 
 * **HPOS (High-Performance Order Storage)** fully supported
 * WooCommerce 9.2 and newer; works alongside Admin Menu Editor, Slider Revolution, Yoast SEO, RankMath, WPML, Polylang
 * Translated into 9 languages, `.pot` file included
-* DB writes use prepared statements; visitor tracking IPs stored only as truncated salted SHA-256 hashes; admin activity excluded from analytics; front-end tracking can be disabled entirely from settings
+* DB writes use prepared statements; admin activity excluded from analytics
 
 == Installation ==
 
@@ -299,7 +298,7 @@ BrikPanel reads product cost from **WooCommerce's own native Cost of Goods Sold 
 
 = Can I turn off BrikPanel's front-end visitor tracking? =
 
-Yes. If you already run a dedicated analytics tool, disable **Visitor tracking** under **WooCommerce → Settings → BrikPanel → Analytics** and BrikPanel stops adding its tracking script, tracking cookies and tracking requests to your storefront. This switch covers analytics only: the shopper-facing features (checkout email capture, the Share cart button, the variation gallery) have their own switches, listed under "Does BrikPanel slow down my WooCommerce store?". You can also keep tracking on but raise the live-visitor refresh interval to reduce server load, or exclude logged-in customer details from the Live view for a fully anonymous setup. If you only want tracking to wait for cookie consent rather than switching it off, see the next question.
+Yes. If you already run a dedicated analytics tool, disable **Visitor tracking** under **WooCommerce → Settings → BrikPanel → Analytics** and BrikPanel stops adding its tracking script, tracking cookies and tracking requests to your storefront. This switch covers analytics only: the shopper-facing features (checkout email capture, the Share cart button, the variation gallery) have their own switches, listed under "Does BrikPanel slow down my WooCommerce store?". You can also keep tracking on but raise the live-visitor refresh interval to reduce server load, or exclude logged-in customer details from the Live view for a fully anonymous setup.
 
 = Does BrikPanel work with a cookie consent banner? (GDPR / consent mode) =
 
@@ -392,7 +391,7 @@ Yes. Every order query either has dual code paths, one for the HPOS order tables
 
 = How do I see WooCommerce sales by country? =
 
-Open the BrikPanel dashboard. The 3D globe in Locations shows the countries your orders come from, and the **Top Countries** and **Top Cities** tables (by orders, customers or visitors) update in real time. A store selling in one country sees its map by state, province or region instead. Orders use billing addresses, visitors their IP address (looked up locally). No setup.
+Open the BrikPanel dashboard. The 3D globe in Locations shows the countries your orders come from, and the **Top Countries** and **Top Cities** tables (by orders, customers or visitors) update in real time. Click a country with a map icon to see its orders by state, province or region (49 countries). A store selling in one country opens on its map. Orders use billing addresses, visitors their IP address (looked up locally). No setup.
 
 = How do I customize the WordPress login page for my WooCommerce store? =
 
@@ -404,7 +403,7 @@ Press `Ctrl + K` (or `Cmd + K` on Mac) anywhere inside wp-admin. The BrikPanel q
 
 = Can I see who is on my WooCommerce store right now? =
 
-Yes. BrikPanel includes a **woocommerce live visitors** widget on the dashboard that updates every 30 seconds. You can see each visitor's country and page, whether they have items in the cart, and whether they are an existing customer. This is real **woocommerce real time visitors** tracking, not estimates. A page nobody has touched for 30 minutes drops off the list, so a forgotten tab is not counted as someone on your store, and it comes back as soon as the visitor scrolls, clicks, taps or types.
+Yes. BrikPanel includes a **woocommerce live visitors** widget on the dashboard that updates every 30 seconds. You can see each visitor's country and page, whether they have items in the cart, and whether they are an existing customer. This is real **woocommerce real time visitors** tracking, not estimates. A tab nobody has touched for 30 minutes drops off the list until the visitor is active again.
 
 = Does BrikPanel track WooCommerce conversion rate and conversion funnel? =
 
@@ -460,7 +459,7 @@ In practice, yes. BrikPanel is built specifically for WooCommerce, but for store
 
 = Does BrikPanel work with Yoast SEO, RankMath, Elementor, WPML, and Polylang? =
 
-Yes. BrikPanel does not interfere with frontend rendering, so it works with every page builder and SEO plugin we have tested. Yoast SEO, Rank Math, All in One SEO and SEOPress metaboxes (including their SEO score panels) render and save inside the BrikPanel product editor. It also has its own translation files and is fully compatible with WPML and Polylang for multilingual stores.
+Yes. BrikPanel does not interfere with frontend rendering, so it works with every page builder and SEO plugin we have tested. Yoast SEO, Rank Math, All in One SEO and SEOPress metaboxes (including their SEO score panels) render and save inside the BrikPanel product editor. It also has its own translation files and is fully compatible with WPML and Polylang for multilingual stores. WPML's compatibility team reviewed BrikPanel 3.3.46 with WPML, String Translation and WooCommerce Multilingual, as part of the WPML Go Global program.
 
 = Does BrikPanel work with WooCommerce Subscriptions and membership plugins? =
 
@@ -485,7 +484,7 @@ No. Deactivating or deleting BrikPanel keeps your expenses, suppliers, purchase 
 
 = Will BrikPanel always be free? =
 
-Yes. The dashboard, the bulk editor, the inventory tools, the order management, the coupon manager, the custom login, the conversion tracking, the customer analytics suite, and every other feature listed above will remain free forever. We also sell a separate paid product (BrikMentor) on top of BrikPanel, but it is additive, BrikPanel itself stays 100% free.
+Yes. The dashboard, bulk editor, inventory tools, order management, coupon manager, custom login, conversion tracking, customer analytics suite and every other feature listed above will remain free forever. We also sell a separate paid product (BrikMentor) on top of BrikPanel, but it is additive, BrikPanel itself stays 100% free.
 
 = Is it BrikPanel or BrickPanel? =
 
@@ -520,6 +519,44 @@ BrikPanel, written as one word and without a "c". It is pronounced like "brick p
 == Changelog ==
 The full release history of every version is in changelog.txt, included with the plugin. The most recent releases are listed below.
 
+= 3.3.53 (2026-11-17) =
+* Tweak: **A compact Marketplaces section.** With BrikMarket, the marketplace part of the dashboard is two cards instead of three rows. "Marketplaces" shows sales, orders and average order value with their change, and marketplace sales day by day, or hour by hour for a single day. "Best sellers on marketplaces" has tabs for products and categories.
+* New: **Where your sales came from.** A ring in the Marketplaces card splits the period's sales between your website and each marketplace, with the amount and share of each. Each marketplace keeps its colour from one period to the next.
+* Fix: **Marketplace best sellers in your store's currency.** Product and category amounts were added up in each order's own currency; they are now converted like the Sales figure. Products are listed by sales instead of units sold, with the units under each.
+* Tweak: **No Chart.js on the dashboard.** The old marketplace pie was the last chart that needed it, so stores with BrikMarket load one file less too.
+* Fix: **BrikPanel on MailPoet and FluentCRM pages.** MailPoet removes other plugins' stylesheets and scripts from its pages, and FluentCRM their scripts, so BrikPanel's side menu lost its look and the top bar's menus and search stopped working there. BrikPanel now adds its own folder to their allow lists. On phones, MailPoet's header sits right under the top bar.
+
+= 3.3.52 (2026-11-14) =
+* New: **Customer returns.** Customers ask for a return from My Account, or as a guest with their order number and email. They choose the items and quantities, variations too, a reason and up to 5 photos, which are saved without their location data. It is off until you turn it on in WooCommerce → Settings → BrikPanel → Returns.
+* New: **A Returns page under Orders.** Approve or reject a request and mark the items as received. The refund uses WooCommerce's own refund, to the card when the payment method supports it, and puts the items back in stock. Waiting requests are counted in the menu and in "Needs attention"; the order screen has a Returns box and the orders list a badge.
+* New: **EU withdrawal button.** A setting turns the button into the EU's "Withdraw from contract here", with a separate confirm step. The customer gets an email with their statement and the date and time they sent it.
+* New: **Four return emails.** New request for you; request received, approved and rejected for the customer. Edit them in WooCommerce → Settings → Emails.
+* Fix: **Numbers no longer hide in closed sidebar menus.** A closed menu item shows the total of the numbers in its list, such as Dashboard for Updates or Products for Reviews. "Site management" and your own headings show the total of their items while closed. Open one and each number is back on its own row.
+* Fix: **A long customer name no longer pushes Total off the orders list.** When the table runs out of room, the customer column gives way first and the name ends with "…". Point at it to see the full name. Names that fit look exactly as before.
+
+= 3.3.51 (2026-11-13) =
+* Tweak: **The DB-IP link sits next to visitor countries.** It now ends the grey line under the globe on the Locations card's Visitors tab, and the Live visitors card while a visitor's flag shows. The line at the bottom of the dashboard is gone.
+
+= 3.3.50 (2026-11-13) =
+* New: **One signup code per email.** The signup popup gives each email address its discount code once, used or not. While the code is still valid, the popup shows it again. This is on for every store, also after this update. Setting: Cart abandonment → Email popup → "One code per email".
+* New: **Signup codes for new customers only.** A new setting, "New customers only", gives no popup code to email addresses that already have an order. The visitor is still subscribed.
+* Tweak: **No code, one clear line.** When one of these settings keeps the code back, no code email goes out and the popup says the address is not eligible. You can write that line for each language.
+* New: **"Month to date" on the dashboard.** Next to Today and 7 days, "Month to date" shows this month from the 1st to today, compared with the same days of last month.
+* Tweak: **A one-line dashboard header.** The date button shows the range you picked and opens the calendar, so the date line under the title is gone.
+* New: **A sales map for any country.** In the Locations card, a country with a map icon opens its own map, its states, provinces or regions shaded by orders, with its top regions and cities beside it. The button at the top opens the map of the country with the most orders, and on a map the country's name lists the others. World goes back to the globe. 49 countries have a map.
+* Tweak: **One Locations card.** The globe and the lists now sit side by side in one card, with the number of countries and the busiest one above them. Pointing at a country in the list turns the globe to it.
+* Fix: **A smoother globe.** The globe turns at the same speed on every screen, no longer makes the whole page redraw as countries turn away, and draws at its real size on high-resolution screens instead of four times larger. In our Firefox test, slow frames went from 39 to 0. Scrolling with the mouse over the globe now scrolls the page.
+* Fix: **A corrected address that gets its code on screen.** After "Wrong address? Edit it", a code shown on screen instead of emailed now appears in the popup, instead of a "Sent to your new address" note.
+* Fix: **Coupon codes on a Turkish dashboard.** The Coupons list and the coupon window show codes with a plain I, BRIK instead of BRİK.
+
+= 3.3.49 (2026-11-10) =
+* Tweak: **Google Sheets two-way sync is much lighter.** Each check of the sheet now loads only the orders, products and expenses whose rows changed, instead of every row. On our test store, one check of 1,208 orders ran 24 database queries instead of 5,403.
+* New: **"Manual only" for two-way sync.** On the Google Sheets page, Orders, Products and Expenses have a "Manual only" choice under "Poll interval": BrikPanel stops checking the sheet on a schedule, and "Pull now" brings your edits in. Every 5 minutes stays the default.
+* Tweak: **Bulk status changes update the sheet in one go.** Changing the status of 20 orders at once now takes one background job and 2 Google requests instead of 19 jobs and 38 requests. Rows Google refuses are tried again, up to three times.
+* Tweak: **A Google Sheets page left open stays quiet.** In a background tab, the page no longer asks your server for its status every 30 seconds. It checks once when you come back.
+* Fix: **Status changes reach the sheet with Redis or Memcached.** With a persistent object cache, an order's first status change after it was exported did not reach the sheet.
+* Fix: **Statuses set in the sheet stay.** With "One row per line item", a status you set in the sheet could be switched back by the next check, before the order's other rows were updated.
+
 = 3.3.48 (2026-11-08) =
 * New: **Phones keep a product you have not saved.** On a phone, the product screen keeps a new or draft product on the device until you save it, with its photos, also the ones still uploading in the media window. If the phone closes the app before you save (iPhones close Home Screen apps left in the background), the next new product offers it back. Restore brings it back as a draft, variations included. Nothing is saved to your store until you tap Restore.
 * New: **A stuck page says why.** When an admin page is still not ready after 15 seconds, a small box at the top shows how long it has waited, whether the wait is your server or the connection between this computer and your site, and what to try, such as turning off HTTP/3 (QUIC). A page that never arrives is explained on the next one. The timings stay in your browser.
@@ -528,52 +565,3 @@ The full release history of every version is in changelog.txt, included with the
 * Tweak: **A lighter order bell and visit counter.** The new-order sound is 40 KB instead of 428 KB. The storefront visit counter is now a file the browser keeps between pages, instead of 26 KB of code inside every page.
 * Tweak: **Speed numbers with a "slow" answer.** In the deactivation survey, "It slowed down my site" and "Something did not work" also send a summary of this browser's page timings and a few server facts: object cache, number of plugins, late background jobs, WP-Cron and web server. The window lists every value before you send.
 * Fix: **Duplicated product names translate correctly.** In German, Spanish, French, Dutch, Brazilian Portuguese, Russian and Turkish, a duplicated product's name ended in the verb, such as "(Kopieren)" instead of "(Kopie)". In Polish, the Copy buttons now say "Kopiuj".
-
-= 3.3.46 (2026-11-07) =
-* New: **Arrange products by hand in a newest-first store.** If your store lists the newest products first, Sort in the products list now has a "Start custom order" button. The shop keeps the same order, you can drag any product to a new place, and new products still appear on top.
-* Fix: **Sorting no longer reshuffles the shop.** In a store with more than one page of products and no saved order, the first drag put every other page's products ahead of the page you sorted. Now only the products you drag change places.
-* Tweak: **Sort says when the shop uses another order.** If the store's default sorting is not the custom order, the Sort banner says so and how to switch.
-* Fix: **Saving a product keeps its place.** BrikPanel's product screen saved back the "Menu order" it opened with, undoing a move made in Sort meanwhile. It now saves it only when you change it.
-* Fix: **Sort messages no longer talk about customer orders.** "Saving order..." and "Order saved" were translated as a customer's order in German, Spanish, French, Italian, Dutch, Polish, Russian and Turkish.
-* New: **A Print button for each order.** A "Print" column in the orders list opens that order's summary in a new tab with the print window. It starts hidden: tick "Print" under Screen Options → Columns. Once it is on, phones show the same button in the order panel.
-* Tweak: **Order summaries print your store's logo.** The summary uses your theme's logo, then the WooCommerce email header image, then the store name. BrikPanel's "Custom brand logo", often an agency's logo, no longer appears on it.
-* Fix: **Order summaries keep their white border.** With "Margins" set to None or Minimum in the print window, the summary ran to the edge of the paper. The border is now part of the page and repeats on every page of a long order.
-
-= 3.3.45 (2026-11-06) =
-* New: **Print order summaries.** Select orders and pick "Print order summary" under Bulk actions, or use Print at the top of an order. Each order gets its own page with your logo, both addresses, product images, options, SKUs, quantities and totals, plus the fields picked in Orders → "Order custom fields". "Save as PDF" in the print window turns it into a PDF.
-* New: **Hidden sections in a folded box.** At the end of the product screen, a "Hidden sections" box holds the sections that come switched off, such as shipping weight, tags and linked products. Open it to edit them right there, without turning them on in the settings. Each user's box stays open or closed the way they left it. Setting: Products → "Suggest hidden sections in the product editor", on by default.
-* New: **Fields from your other plugins in a folded box.** With "Auto-show fields other plugins add" off, the fields other plugins add to a product now wait in a folded "Fields from your other plugins" box instead of staying off the page. Open it to edit them, or use "Always show these fields" to keep them open for everyone. Products save exactly as before until the box is opened.
-* Fix: **Fields under "Stock status" show up.** Boxes that other plugins add below Stock status in WooCommerce's Inventory tab, such as stock per warehouse, could not be shown in BrikPanel's product screen. They now appear in the "Fields from your other plugins" box.
-* Fix: **Categories stay when the Category section is off.** With the Category section switched off in Products → "Visible editor sections", every save in BrikPanel's product screen, automatic saves too, moved the product to Uncategorized. Its categories are now kept.
-* Tweak: **Editor settings one click away.** A small gear next to the product screen's title opens the product editor's settings (Products), with a link back to the product. On a phone it is in the "..." menu.
-* New: **The cache button clears CloudPanel's Varnish.** With CloudPanel's CLP Varnish Cache plugin on, the top bar's cache button also purges Varnish, the same way the plugin's own "Entire Cache" purge does. If Varnish cannot be reached, it says so and still clears the other caches.
-* Fix: **Order status emails in the customer's language (WPML).** An email for a custom order status now goes out in the order's language, status name included, instead of the language of the admin who changed the status. The store's own copy stays in the admin's language.
-* New: **Translatable status names and email texts (WPML).** Custom order status names and their email subject, heading and text can be translated in WPML → String Translation.
-* Fix: **Past orders keep their exchange rate (WooCommerce Multilingual).** A rate change, typed or automatic, converted every past order again at the new rate. Each order now keeps the rate it was converted at.
-* Tweak: **Each product row shows its language (WPML).** The product list shows a small language code next to the product name.
-* Fix: **A translation's price comes from its original (WPML).** Quick edit, bulk edit, the product screen and the Google Sheets pull no longer change a translation's price on its own, and a new price on the original now reaches its translations.
-
-= 3.3.44 (2026-11-03) =
-* Fix: **Bundles made with other plugins keep their contents.** Saving an Easy Product Bundles or WPC Product Bundles bundle in BrikPanel's product screen emptied it. A product type whose own settings are in WooCommerce's editor is now left untouched, also with "Auto-show fields other plugins add" on.
-* Fix: **Bundles no longer need a price.** Their price box is optional and shows the stored price, so a Bopo bundle keeps the price it works out instead of becoming a fixed-price bundle.
-* Tweak: **The "Open in WooCommerce" note for new bundles.** Picking a bundle type for a new product now shows the note that links to its settings.
-* Fix: **A hidden Pricing section no longer clears prices.** With Pricing off in Products → "Visible editor sections", every save emptied the product's price.
-
-= 3.3.43 (2026-10-31) =
-* New: **Pick the product type with one tap.** The product screen shows four buttons under the product name: Simple, Variable, Grouped and External, with other plugins' types under "More". The Products setting "Product type selector" is gone, as the buttons are always there.
-* Fix: **Grouped and external products keep their type.** Saving one in BrikPanel's product screen turned it into a simple product, and quick edit, bulk actions and the Google Sheets pull wrote prices or stock to it.
-* Fix: **One product no longer stops a Google Sheets pull.** A product the pull cannot update is skipped and logged, and the rest of the sheet still comes in.
-* New: **Grouped and external product cards.** "Products in this group" lets you search, add and drag products into order; an external product has its "Product URL" and "Button text".
-* Tweak: **A tidier product screen.** Virtual, Digital and other plugins' type options are small switches under the type buttons, attributes and sale dates open from "Add attribute" and "Schedule the sale", price and cost share a row, and help lines moved into "?" balloons. Other plugins' boxes fold and stay the way each person leaves them.
-* New: **Coupons that apply themselves.** In the coupon window, "Apply automatically" puts the coupon on every cart that meets its rules, with no code to type. When several fit, the biggest discount stays and a free shipping coupon goes on next to it. Personal codes are never pushed off.
-* New: **Discounts by number of items.** "Minimum items" and "Maximum items" make a coupon count only for carts with that many items, so 1-5 items can get 10% and 6-10 items 15%.
-* New: **Coupon links.** "Copy link" gives a store link that puts the coupon on the shopper's cart, or keeps it for the visit until the cart qualifies.
-* New: **Pencil drawings in the email popup.** Setting: Cart abandonment → Email popup → "Offer animation". The six styles are redrawn as pencil sketches that draw themselves once: Handwriting (the new default), Ring, Coupon, Envelope, Gift box and Eraser. A style you picked moves to its new drawing.
-* Tweak: **A calmer popup.** It opens without a bounce, and after signup a pencil tick and a frame drawn round the code replace the confetti. On a store with more than one language, each drawing's handwritten note can be set per language.
-* Fix: **The popup shrinks into its tab.** After signup, the card now flies into the floating tab that keeps the code, instead of only fading away.
-
-= 3.3.42 (2026-10-30) =
-* New: **The phone app carries your store's name and icon.** When added to a phone, the app now gets your Site Title and Site Icon (BrikPanel's icon when there is none), and the phone panel uses that name in its steps. A phone that already has the app may keep the old name until the app is added again.
-* New: **Choose what an order notification says.** Setting: Notifications → "Notification text". Switch the total, number of items, order number, SKUs, campaign and store name on or off and set their order, with a preview from your latest order. The store name is now off by default, as the app already carries it.
-* New: **Your supplier's SKU on orders.** With supplier management on, a product with a supplier's code shows it under its SKU on the order screen, such as "AliExpress SKU: AE-30418". It never shows in customer emails.
-* New: **A supplier SKU for each variation.** Variations have their own "Supplier SKU" box; left empty, it uses the main product's code when the supplier is the same. Stock Orders show the code and find products by it.

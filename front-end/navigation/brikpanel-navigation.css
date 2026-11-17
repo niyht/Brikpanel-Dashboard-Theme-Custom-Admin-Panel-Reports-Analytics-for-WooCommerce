@@ -352,9 +352,14 @@ body.wp-admin.brikpanel-chrome {
 }
 /* Count bubbles (Orders / Comments / Payments / plugin badges). `line-height` is
    pinned so a badge never grows past the 18px icon slot — inheriting the row's
-   line-height made every badged row a pixel taller than its neighbours. */
+   line-height made every badged row a pixel taller than its neighbours.
+   `update-plugins` alone: TranslatePress's bubble on Settings has no "count" in
+   its class and was printed as a bare number. The last one is the sum a closed
+   row shows (brikpanel_nav_sum_html()). */
 #brikpanel-navigation a > span[class*="count"],
-#brikpanel-navigation a > span[class*="awaiting-mod"] {
+#brikpanel-navigation a > span[class*="awaiting-mod"],
+#brikpanel-navigation a > span[class*="update-plugins"],
+#brikpanel-navigation a > .brikpanel-nav-sum {
 	font-size: 0.75rem;
 	font-weight: 500;
 	line-height: 16px;
@@ -362,6 +367,26 @@ body.wp-admin.brikpanel-chrome {
 	background-color: rgb(0, 0, 0, 0.06);
 	padding: 0 0.5rem;
 	margin-top: 0.06rem;
+}
+/* The same bubble beside a closed heading's name ("Site management"), which
+   has no gap between its label and arrow. */
+#brikpanel-navigation .brikpanel-menu-heading > .brikpanel-nav-sum {
+	flex-shrink: 0;
+	font-size: 0.75rem;
+	font-weight: 500;
+	line-height: 16px;
+	border-radius: 0.5rem;
+	background-color: rgb(0, 0, 0, 0.06);
+	padding: 0 0.5rem;
+	margin-inline-start: 0.375rem;
+}
+/* A sum stands in for numbers that are out of sight, so it goes once they are
+   on screen: an open row lists its pages with their own numbers, an open
+   heading shows its rows. A heading is marked closed by the sidebar script,
+   which is what folds it (brikpanel_render_navigation()). */
+#brikpanel-navigation li.brikpanel-has-open-submenu > .brikpanel-menu-icon-title-chevron-container .brikpanel-nav-sum,
+#brikpanel-navigation .brikpanel-menu-heading:not(.brikpanel-menu-heading--collapsed) > .brikpanel-nav-sum {
+	display: none;
 }
 /* WordPress prints a bubble even at zero ("Updates 0", "Comments 0") and hides
    it only with `#adminmenu li span.count-0`, which never reaches this sidebar.

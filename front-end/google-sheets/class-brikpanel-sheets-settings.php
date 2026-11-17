@@ -768,6 +768,8 @@ class Brikpanel_Sheets_Settings {
 		}
 
 		delete_option( Brikpanel_Sheets_Order_Sync::OPT_LAST_SYNC );
+		// Orders waiting for a row rewrite point at rows that no longer exist.
+		delete_option( Brikpanel_Sheets_Order_Sync::OPT_UPDATE_QUEUE );
 		delete_option( Brikpanel_Sheets_Reports_Sync::OPT_LAST );
 		delete_option( Brikpanel_Sheets_Customers_Sync::OPT_LAST );
 		// Expense row snapshots describe rows in the OLD spreadsheet. Carried
@@ -827,11 +829,7 @@ class Brikpanel_Sheets_Settings {
 				$ship = array_values( array_intersect( $ship, $valid_methods ) );
 				update_option( Brikpanel_Sheets_Order_Sync::OPT_SHIPPING_METHODS, $ship, false );
 				update_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_ENABLED, $this->yes_no( $_POST['pull_enabled'] ?? '' ), false );
-				$pull_int = sanitize_key( $_POST['pull_interval'] ?? '5' );
-				if ( ! in_array( $pull_int, [ '2', '5', '15' ], true ) ) {
-					$pull_int = '5';
-				}
-				update_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+				update_option( Brikpanel_Sheets_Order_Sync::OPT_PULL_INTERVAL, self::sanitize_pull_interval( wp_unslash( $_POST['pull_interval'] ?? '5' ) ), false );
 
 				// Row layout LAST, because a failed switch aborts the request:
 				// everything saved above must already be committed by then.
@@ -879,11 +877,7 @@ class Brikpanel_Sheets_Settings {
 				$tab = sanitize_text_field( wp_unslash( $_POST['tab'] ?? '' ) );
 				update_option( Brikpanel_Sheets_Products_Sync::OPT_TAB_NAME, $tab !== '' ? $tab : 'Products', false );
 				update_option( Brikpanel_Sheets_Products_Sync::OPT_PULL_ENABLED, $this->yes_no( $_POST['pull_enabled'] ?? '' ), false );
-				$pull_int = sanitize_key( $_POST['pull_interval'] ?? '5' );
-				if ( ! in_array( $pull_int, [ '2', '5', '15' ], true ) ) {
-					$pull_int = '5';
-				}
-				update_option( Brikpanel_Sheets_Products_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+				update_option( Brikpanel_Sheets_Products_Sync::OPT_PULL_INTERVAL, self::sanitize_pull_interval( wp_unslash( $_POST['pull_interval'] ?? '5' ) ), false );
 
 				// Category filter: empty (no boxes checked) means "sync every
 				// product". Keep only IDs that are real product_cat terms so a
@@ -927,11 +921,7 @@ class Brikpanel_Sheets_Settings {
 				$tab = sanitize_text_field( wp_unslash( $_POST['tab'] ?? '' ) );
 				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_TAB_NAME, $tab !== '' ? $tab : 'Expenses', false );
 				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_ENABLED, $this->yes_no( $_POST['pull_enabled'] ?? '' ), false );
-				$pull_int = sanitize_key( $_POST['pull_interval'] ?? '5' );
-				if ( ! in_array( $pull_int, [ '2', '5', '15' ], true ) ) {
-					$pull_int = '5';
-				}
-				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_INTERVAL, $pull_int, false );
+				update_option( Brikpanel_Sheets_Expenses_Sync::OPT_PULL_INTERVAL, self::sanitize_pull_interval( wp_unslash( $_POST['pull_interval'] ?? '5' ) ), false );
 				do_action( 'brikpanel_cron_register' );
 				break;
 
@@ -943,6 +933,19 @@ class Brikpanel_Sheets_Settings {
 
 	private function yes_no( $val ) {
 		return ( $val === 'yes' || $val === '1' || $val === true ) ? 'yes' : 'no';
+	}
+
+	/**
+	 * A two-way poll interval as saved: '2', '5' or '15' minutes, or 'manual'
+	 * (nothing reads the sheet on a schedule; "Pull now" does). Anything else
+	 * falls back to the default, every 5 minutes.
+	 *
+	 * @param mixed $raw
+	 * @return string
+	 */
+	public static function sanitize_pull_interval( $raw ) {
+		$value = sanitize_key( is_scalar( $raw ) ? (string) $raw : '' );
+		return in_array( $value, [ '2', '5', '15', 'manual' ], true ) ? $value : '5';
 	}
 
 	/**

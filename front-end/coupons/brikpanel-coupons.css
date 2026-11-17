@@ -420,11 +420,12 @@
 }
 
 /* ---------- Coupon Code ---------- */
+/* Capitals come from the script (asciiUpper), not from text-transform: CSS
+   capitals follow the page language and wrote "BRİK" on a Turkish dashboard. */
 .brikpanel-cp-code-text {
     font-family: "SF Mono", "Fira Code", "Consolas", monospace;
     font-size: 0.8125rem;
     font-weight: 600;
-    text-transform: uppercase;
     color: var(--text);
     letter-spacing: 0.02em;
     cursor: pointer;

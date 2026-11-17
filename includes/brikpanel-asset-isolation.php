@@ -64,6 +64,11 @@
  * desktop-only scripts from WordPress and WooCommerce (the Ctrl+K command
  * palette and the data layer it searches), see brikpanel_isolation_sweep_phone().
  *
+ * The other way round is at the end of the file: plugins that strip other
+ * plugins' files from their own pages (MailPoet, FluentCRM) get BrikPanel's
+ * folder added to their allow lists, so the side menu and the top bar keep
+ * their stylesheets and scripts there, see brikpanel_isolation_own_patterns().
+ *
  * @package BrikPanel
  * @since 3.2.11
  */
@@ -392,3 +397,95 @@ function brikpanel_isolation_sweep_phone() {
 	}
 }
 add_action( 'admin_enqueue_scripts', 'brikpanel_isolation_sweep_phone', PHP_INT_MAX );
+
+// =============================================================================
+// THE OTHER WAY ROUND: PLUGINS THAT STRIP OTHER PLUGINS' FILES FROM THEIR PAGES
+// =============================================================================
+
+/**
+ * Regex fragments matching the URL of every file BrikPanel loads, for the allow
+ * lists of plugins that strip other plugins' files from their own admin pages.
+ *
+ * Some plugins clear the stage before their admin app starts: every stylesheet
+ * or script whose URL is not on their allow list is dequeued. The BrikPanel side
+ * menu, top bar and bell are part of every admin screen, theirs included, so
+ * they were left there as bare HTML, or as dead buttons when only the scripts
+ * go. Each of these plugins offers a filter to extend its list; BrikPanel adds
+ * its own folder and nothing else.
+ *
+ * Each fragment is the folder between slashes, so a folder that merely starts
+ * with our name (`brikpanel-...-pro/`) never matches. Both names the folder can
+ * be addressed by are covered, as in brikpanel_isolation_trusted_dirs(): the one
+ * WordPress builds the URLs from (the basename, so a renamed or symlinked
+ * install too) and the one on disk. The names keep their case: FluentCRM
+ * matches case-sensitively.
+ *
+ * @param string $delimiter The delimiter the other plugin wraps its pattern in.
+ *                          It is escaped as well: one bare delimiter breaks the
+ *                          whole pattern, and MailPoet then strips every file.
+ * @return string[]
+ */
+function brikpanel_isolation_own_patterns( $delimiter ) {
+	$dirs = array(
+		defined( 'BRIKPANEL_BASENAME' ) ? dirname( BRIKPANEL_BASENAME ) : '',
+		defined( 'BRIKPANEL_PATH' ) ? basename( untrailingslashit( BRIKPANEL_PATH ) ) : '',
+	);
+	$patterns = array();
+	foreach ( array_unique( $dirs ) as $dir ) {
+		if ( '' !== $dir && '.' !== $dir ) {
+			$patterns[] = preg_quote( '/' . $dir . '/', $delimiter );
+		}
+	}
+	return $patterns;
+}
+
+/**
+ * MailPoet: keep BrikPanel's stylesheets and scripts on MailPoet's pages.
+ *
+ * On every `admin.php?page=mailpoet-*` screen MailPoet's ConflictResolver
+ * dequeues each stylesheet and script whose URL is not on its allow list
+ * (WordPress core, MailPoet and a few plugins). Reported on wp.org by hanmlx on
+ * 17 November 2026 (BrikPanel 3.3.52, MailPoet 5.45.2): the side menu did not
+ * display correctly and the logo was much too large. Measured on a test store
+ * with MailPoet 5.45.2: not one BrikPanel file left on its pages (the Posts
+ * screen has 6 stylesheets and 6 scripts), the native menu drawn next to ours,
+ * a top bar icon 1260 px wide.
+ *
+ * MailPoet joins the list with "|" between "!" delimiters, case-insensitively,
+ * and reads it while it builds its menu (admin_menu, which runs before
+ * admin_init), so the filters are added as soon as this file loads.
+ *
+ * @param mixed $patterns MailPoet's allow list (regex fragments).
+ * @return mixed
+ */
+function brikpanel_isolation_keep_own_on_mailpoet( $patterns ) {
+	if ( ! is_array( $patterns ) ) {
+		return $patterns;
+	}
+	return array_merge( $patterns, brikpanel_isolation_own_patterns( '!' ) );
+}
+add_filter( 'mailpoet_conflict_resolver_whitelist_style', 'brikpanel_isolation_keep_own_on_mailpoet' );
+add_filter( 'mailpoet_conflict_resolver_whitelist_script', 'brikpanel_isolation_keep_own_on_mailpoet' );
+
+/**
+ * FluentCRM: keep BrikPanel's scripts on FluentCRM's page.
+ *
+ * On `admin.php?page=fluentcrm-admin` FluentCRM's no-conflict mode removes every
+ * script served from the plugins folder whose URL does not match its allow list
+ * (its own folder and Gutenberg); stylesheets stay. BrikPanel's side menu and
+ * top bar kept their looks there but lost all 6 of their scripts, so the top
+ * bar's menus and the search did not open (measured with FluentCRM 3.3.1,
+ * 17 November 2026; no customer had reported it yet).
+ *
+ * FluentCRM joins the list with "|" between "/" delimiters, case-sensitively.
+ *
+ * @param mixed $slugs FluentCRM's allow list (regex fragments).
+ * @return mixed
+ */
+function brikpanel_isolation_keep_own_on_fluentcrm( $slugs ) {
+	if ( ! is_array( $slugs ) ) {
+		return $slugs;
+	}
+	return array_merge( $slugs, brikpanel_isolation_own_patterns( '/' ) );
+}
+add_filter( 'fluent_crm_asset_listed_slugs', 'brikpanel_isolation_keep_own_on_fluentcrm' );

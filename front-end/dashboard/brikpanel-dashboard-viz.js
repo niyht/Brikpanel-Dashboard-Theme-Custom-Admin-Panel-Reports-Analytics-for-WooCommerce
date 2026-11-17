@@ -2,8 +2,9 @@
  * BrikPanel dashboard: the hand-drawn charts of the redesigned cards (October
  * 2026). Plain SVG, no chart library: the sales line with its previous period,
  * the funnel ribbon, the 100 squares of Order rates, the dot strips of the
- * Visitors and Customers cards, today's hourly sales bars and the small lines
- * in the store cards.
+ * Visitors and Customers cards, today's hourly sales bars, the small lines
+ * in the store cards and, with BrikMarket, the Marketplaces card's columns
+ * and share ring (3.3.53).
  *
  * This file only draws and handles pointer, touch and keyboard. It holds no
  * text: every label, number and tooltip line comes from the caller
@@ -18,8 +19,8 @@
  * mirrored. Reduced motion: nothing animates.
  *
  * API: window.brikpanelDashViz.{ mono, niceMax, per100, smooth, spark, dots,
- * waffle, flow, line, bars, tip, indexer, tabs, anim, countUp, onView,
- * inView, watchWidth, reduced, isRtl, esc }.
+ * waffle, flow, line, bars, columns, ring, tip, indexer, tabs, anim, countUp,
+ * onView, inView, watchWidth, reduced, isRtl, esc }.
  */
 (function (window, document) {
     'use strict';
@@ -721,6 +722,139 @@
         box.__bpDvHide = hide;
     }
 
+    /* ------------------------------------------------------------ period columns */
+
+    // A period's figure as columns (the Marketplaces card: sales by day, or
+    // by hour on a one-day period), the hourly bars' look: one column per
+    // value, a value still to come (null) as a short stub, the first and last
+    // labels under the ends. cfg: { values: [v|null], first, last, tipAt(i),
+    // ariaLabel, live }.
+    function columns(box, cfg) {
+        var rtl = isRtl(box);
+        var W = Math.max(160, box.clientWidth);
+        var H = cfg.height || 74;
+        var base = H - 16;
+        var top = 4;
+        var n = cfg.values.length;
+        var max = 0;
+        cfg.values.forEach(function (v) {
+            if (v !== null && v > max) {
+                max = v;
+            }
+        });
+        var bw = W / Math.max(1, n);
+        var gap = bw > 6 ? 0.28 : bw > 3 ? 0.2 : 0;
+        var out = '';
+        for (var i = 0; i < n; i++) {
+            var v = cfg.values[i];
+            var later = v === null;
+            var hh = later ? 2 : Math.max(2, max > 0 ? v / max * (base - top) : 2);
+            var w = Math.max(0.6, bw * (1 - gap));
+            var x = i * bw + (bw - w) / 2;
+            var xx = rtl ? W - x - w : x;
+            out += '<rect class="bp-dv-col' + (later ? ' is-later' : (v > 0 ? '' : ' is-zero')) + '" x="' + f2(xx) + '" y="' + f2(base - hh) + '" width="' + f2(w) + '" height="' + f2(hh) + '" rx="' + (w > 4 ? 1.5 : 0) + '"/>';
+        }
+        // SVG text takes the page's direction: in RTL "start" is the right edge.
+        var labels = '<text class="bp-dv-col-label" x="' + f2(rtl ? W : 0) + '" y="' + f2(H - 2) + '" text-anchor="start">' + esc(cfg.first || '') + '</text>' +
+            '<text class="bp-dv-col-label" x="' + f2(rtl ? 0 : W) + '" y="' + f2(H - 2) + '" text-anchor="end">' + esc(cfg.last || '') + '</text>';
+        box.innerHTML = '<svg class="bp-dv-cols" width="' + f2(W) + '" height="' + H + '" viewBox="0 0 ' + f2(W) + ' ' + H + '" role="img" aria-label="' + esc(cfg.ariaLabel || '') + '">' + out + labels + '</svg>';
+
+        var svg = box.firstChild;
+        var rects = svg.querySelectorAll('.bp-dv-col');
+
+        function show(i, how) {
+            if (!rects[i]) {
+                return;
+            }
+            Array.prototype.forEach.call(rects, function (r, k) { r.classList.toggle('is-hl', k === i); });
+            var r = rects[i].getBoundingClientRect();
+            var t = cfg.tipAt(i);
+            tip.show(t, { left: r.left, width: r.width, top: Math.min(r.top, svg.getBoundingClientRect().top + 20), bottom: r.bottom, height: r.height });
+            if (how === 'key' && cfg.live) {
+                cfg.live.textContent = [t.title].concat((t.rows || []).map(function (row) { return row[0] + ' ' + row[1]; })).join(', ');
+            }
+        }
+
+        function hide() {
+            Array.prototype.forEach.call(rects, function (r) { r.classList.remove('is-hl'); });
+            tip.hide();
+        }
+
+        box.__bpDvState = { n: n, rtl: rtl };
+        if (!box.__bpDvIndexer) {
+            box.__bpDvIndexer = indexer(box, {
+                count: function () { return box.__bpDvState.n; },
+                rtl: function () { return box.__bpDvState.rtl; },
+                indexAt: function (clientX) {
+                    var st = box.__bpDvState;
+                    var bb = box.firstChild.getBoundingClientRect();
+                    var x = clientX - bb.left;
+                    return Math.max(0, Math.min(st.n - 1, Math.floor((st.rtl ? bb.width - x : x) / (bb.width / st.n))));
+                },
+                onIndex: function (i, how) { box.__bpDvShow(i, how); },
+                onLeave: function () { box.__bpDvHide(); }
+            });
+        }
+        box.__bpDvShow = show;
+        box.__bpDvHide = hide;
+    }
+
+    /* ------------------------------------------------------------ share ring */
+
+    // A ring of parts (the Marketplaces card: the website and each
+    // marketplace), clockwise from the top, a thin gap between parts.
+    // parts: [{ key, pct, color }]. A part's own colour (a marketplace's)
+    // comes in as the --bp-ring variable that the stylesheet's rule reads, so
+    // forced colours can still restyle it. Decorative: the caller lists the
+    // parts in words beside it.
+    function ring(parts, size) {
+        var ns = 'http://www.w3.org/2000/svg';
+        var sw = Math.round(size * 0.15);
+        var r = (size - sw) / 2;
+        var cx = size / 2;
+        var c = 2 * Math.PI * r;
+        var shown = parts.filter(function (p) { return p.pct > 0; });
+        var gap = shown.length > 1 ? Math.min(2.5, c / 120) : 0;
+        var svg = document.createElementNS(ns, 'svg');
+        svg.setAttribute('class', 'bp-dv-ring');
+        svg.setAttribute('width', String(size));
+        svg.setAttribute('height', String(size));
+        svg.setAttribute('viewBox', [0, 0, size, size].join(' '));
+        svg.setAttribute('aria-hidden', 'true');
+        svg.setAttribute('focusable', 'false');
+        var circle = function (cls) {
+            var el = document.createElementNS(ns, 'circle');
+            el.setAttribute('class', cls);
+            el.setAttribute('cx', f2(cx));
+            el.setAttribute('cy', f2(cx));
+            el.setAttribute('r', f2(r));
+            el.setAttribute('fill', 'none');
+            el.setAttribute('stroke-width', String(sw));
+            svg.appendChild(el);
+            return el;
+        };
+        circle('bp-dv-ring-bg');
+        // A circle starts at its right edge: a quarter turn of offset starts
+        // the first part at the top.
+        var at = 0;
+        parts.forEach(function (p) {
+            if (!(p.pct > 0)) {
+                return;
+            }
+            var len = p.pct / 100 * c;
+            var dash = Math.max(0.01, len - gap);
+            var arc = circle('bp-dv-ring-arc');
+            arc.setAttribute('stroke-dasharray', [f2(dash), f2(c - dash)].join(' '));
+            arc.setAttribute('stroke-dashoffset', f2(c / 4 - at));
+            arc.setAttribute('data-k', String(p.key));
+            if (p.color) {
+                arc.style.setProperty('--bp-ring', p.color);
+            }
+            at += len;
+        });
+        return svg;
+    }
+
     /* ------------------------------------------------------------ funnel ribbon */
 
     // Edges of the ribbon: flat across each step, an S-curve between steps.
@@ -1121,6 +1255,8 @@
         flow: flow,
         line: line,
         bars: bars,
+        columns: columns,
+        ring: ring,
         tip: tip,
         indexer: indexer,
         tabs: tabs,

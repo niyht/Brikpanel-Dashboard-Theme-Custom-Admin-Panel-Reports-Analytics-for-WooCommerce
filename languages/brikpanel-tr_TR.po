@@ -6259,10 +6259,6 @@ msgstr "Dün"
 msgid "Custom"
 msgstr "Özel"
 
-#: front-end/dashboard/brikpanel-dashboard.php:1048
-msgid "Select dates"
-msgstr "Tarih seçin"
-
 #: front-end/dashboard/brikpanel-dashboard.php:1096
 #: front-end/dashboard/brikpanel-dashboard.php:7211
 msgid "IP Geolocation by DB-IP"
@@ -6651,26 +6647,6 @@ msgstr "Bu gider kaldırılsın mı?"
 msgid "What to remove"
 msgstr "Ne kaldırılacak"
 
-#: front-end/dashboard/brikpanel-dashboard.php:2153
-msgid "Marketplace sales"
-msgstr "Pazar yeri satışları"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2158
-msgid "Marketplace orders"
-msgstr "Pazar yeri siparişleri"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2163
-msgid "Avg. marketplace order"
-msgstr "Ort. pazar yeri siparişi"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2168
-msgid "Share of total revenue"
-msgstr "Toplam gelirin payı"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2177
-msgid "Revenue by marketplace"
-msgstr "Pazar yerine göre gelir"
-
 #: front-end/dashboard/brikpanel-dashboard.php:2179
 #: front-end/dashboard/brikpanel-dashboard.php:2196
 #: front-end/dashboard/brikpanel-dashboard.php:2202
@@ -6682,18 +6658,6 @@ msgstr "Pazar yerine göre gelir"
 #: includes/brikpanel-enqueue.php:788
 msgid "Loading..."
 msgstr "Yükleniyor..."
-
-#: front-end/dashboard/brikpanel-dashboard.php:2183
-msgid "Marketplace share"
-msgstr "Pazar yeri payı"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2194
-msgid "Top categories from marketplaces"
-msgstr "Pazar yerlerinden en iyi kategoriler"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2200
-msgid "Top marketplace products"
-msgstr "En iyi pazar yeri ürünleri"
 
 #: front-end/dashboard/brikpanel-dashboard.php:2285
 msgid "Website orders only"
@@ -6721,10 +6685,6 @@ msgstr "Harita"
 msgctxt "order locations card: the world globe"
 msgid "World"
 msgstr "Dünya"
-
-#: front-end/dashboard/brikpanel-dashboard.php:2388
-msgid "Toggle theme"
-msgstr "Temayı değiştir"
 
 #: front-end/dashboard/brikpanel-dashboard.php:2399
 msgctxt "map colour scale: fewer orders"
@@ -16541,18 +16501,6 @@ msgstr "Canlı ziyaretçileri görmek için sayfayı yenileyin."
 msgid "Share"
 msgstr "Oran"
 
-#: includes/brikpanel-enqueue.php:585
-msgid "vs. prev."
-msgstr "öncekine göre"
-
-#: includes/brikpanel-enqueue.php:586
-msgid "of"
-msgstr "/"
-
-#: includes/brikpanel-enqueue.php:587
-msgid "combined revenue"
-msgstr "birleşik gelir"
-
 #: includes/brikpanel-enqueue.php:588
 msgid "No category data. Marketplace items must be linked to your WooCommerce catalog (by product or SKU) for the category breakdown to appear."
 msgstr "Kategori verisi yok. Kategori dağılımının görünmesi için pazaryeri ürünlerinin WooCommerce kataloğunuza (ürün ya da SKU ile) bağlı olması gerekir."
@@ -21396,3 +21344,1061 @@ msgstr "Kopyalandı"
 msgctxt "suffix of a duplicated product name"
 msgid "Copy"
 msgstr "Kopya"
+
+#: front-end/google-sheets/views/page.php:373
+#: front-end/google-sheets/views/page.php:474
+#: front-end/google-sheets/views/page.php:671
+msgid "Manual only: BrikPanel does not check the sheet on a schedule. Click \"Pull now\" to bring your edits in."
+msgstr "Yalnızca manuel: BrikPanel tabloyu belirli aralıklarla kontrol etmez. Değişikliklerinizi almak için \"Şimdi çek\" düğmesine tıklayın."
+
+#: front-end/dashboard/brikpanel-dashboard.php:1057
+#: front-end/dashboard/brikpanel-dashboard.php:4691
+msgid "Month to date"
+msgstr "Bu ay"
+
+#: front-end/dashboard/brikpanel-dashboard.php:1088
+msgid "Choose dates"
+msgstr "Tarih seçin"
+
+#: includes/brikpanel-enqueue.php:718
+msgid "vs the same period last month"
+msgstr "geçen ayın aynı dönemine göre"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:633
+msgid "This email address is not eligible for the signup discount."
+msgstr "Bu e-posta adresi kayıt indiriminden yararlanamaz."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:5720
+msgid "Not eligible note"
+msgstr "Kod yok notu"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6213
+msgid "One code per email"
+msgstr "E-posta başına tek kod"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6214
+msgid "Give each email address the signup code only once"
+msgstr "Kayıt kodunu her e-posta adresine yalnızca bir kez ver"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6215
+msgid "An address that already got a signup code, used or not, gets no new one. While its code is still valid, the popup shows that code again. Only codes still in your store count, the trash included."
+msgstr "Daha önce kayıt kodu almış bir adres, kodu kullanmış olsun ya da olmasın, yeni kod almaz. Kodu hâlâ geçerliyse pencere aynı kodu yeniden gösterir. Yalnızca mağazanızda duran kodlar sayılır, çöp kutusundakiler de dahil."
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6221
+msgid "New customers only"
+msgstr "Yalnızca yeni müşteriler"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6222
+msgid "Give no signup code to email addresses that already have an order"
+msgstr "Daha önce siparişi olan e-posta adreslerine kayıt kodu verme"
+
+#: front-end/cart-abandonment/brikpanel-cart-abandonment.php:6223
+msgid "Counts the orders placed with this address or by its account, paid or refunded. The visitor is still subscribed, only without a code."
+msgstr "Bu adresle ya da bu adresin hesabıyla verilen ödenmiş veya iade edilmiş siparişler sayılır. Ziyaretçi yine abone olur, yalnızca kod almaz."
+
+msgctxt "Locations card button: the region map of a country"
+msgid "%s map"
+msgstr "%s haritası"
+
+msgctxt "Locations card: the menu of countries whose map can open"
+msgid "Country maps"
+msgstr "Ülke haritaları"
+
+msgctxt "Locations card: back from a country map to the country list"
+msgid "Countries"
+msgstr "Ülkeler"
+
+msgid "Open its map"
+msgstr "Haritasını açın"
+
+msgid "%s country"
+msgid_plural "%s countries"
+msgstr[0] "%s ülke"
+msgstr[1] "%s ülke"
+
+msgid "%s province"
+msgid_plural "%s provinces"
+msgstr[0] "%s il"
+msgstr[1] "%s il"
+
+msgid "%s state"
+msgid_plural "%s states"
+msgstr[0] "%s eyalet"
+msgstr[1] "%s eyalet"
+
+msgid "%s region"
+msgid_plural "%s regions"
+msgstr[0] "%s bölge"
+msgstr[1] "%s bölge"
+
+msgid "Most orders: %1$s (%2$s)"
+msgstr "En çok sipariş: %1$s (%2$s)"
+
+msgid "Most customers: %1$s (%2$s)"
+msgstr "En çok müşteri: %1$s (%2$s)"
+
+msgid "Most visitors: %1$s (%2$s)"
+msgstr "En çok ziyaretçi: %1$s (%2$s)"
+
+msgid "Loading the map…"
+msgstr "Harita yükleniyor…"
+
+msgid "The map could not be loaded. Please try again."
+msgstr "Harita yüklenemedi. Lütfen tekrar deneyin."
+
+#: front-end/returns/brikpanel-returns-account.php:45
+msgid "Withdraw from contract here"
+msgstr "Sözleşmeden burada cayın"
+
+#: front-end/returns/brikpanel-returns-account.php:45
+msgid "Request return"
+msgstr "İade iste"
+
+#: front-end/returns/brikpanel-returns-account.php:52
+#: front-end/returns/brikpanel-returns-account.php:705
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Withdraw from contract"
+msgstr "Sözleşmeden cayma"
+
+#: front-end/returns/brikpanel-returns-account.php:52
+msgid "Request a return"
+msgstr "İade isteyin"
+
+#: front-end/returns/brikpanel-returns-account.php:204
+msgid "View return"
+msgstr "İadeyi gör"
+
+#: front-end/returns/brikpanel-returns-account.php:206
+#, php-format
+msgid "View the return of order %s"
+msgstr "%s numaralı siparişin iadesini görün"
+
+#: front-end/returns/brikpanel-returns-account.php:216
+#, php-format
+msgid "Return items from order %s"
+msgstr "%s numaralı siparişten ürün iade edin"
+
+#: front-end/returns/brikpanel-returns-account.php:294
+#: front-end/returns/brikpanel-returns-admin.php:573
+#, php-format
+msgid "Withdrawal #%s"
+msgstr "Cayma #%s"
+
+#: front-end/returns/brikpanel-returns-account.php:296
+#: front-end/returns/brikpanel-returns-admin.php:142
+#: front-end/returns/brikpanel-returns-admin.php:575
+#: front-end/returns/brikpanel-returns-engine.php:778
+#, php-format
+msgid "Return #%s"
+msgstr "İade #%s"
+
+#: front-end/returns/brikpanel-returns-account.php:306
+#, php-format
+msgid "Requested on %s"
+msgstr "İstendiği tarih: %s"
+
+#: front-end/returns/brikpanel-returns-account.php:321
+#: front-end/returns/brikpanel-returns-account.php:584
+#: front-end/returns/brikpanel-returns-engine.php:432
+#: front-end/returns/brikpanel-returns-engine.php:1368
+#: templates/emails/plain/brikpanel-return.php:56
+#, php-format
+msgctxt "units × product"
+msgid "%1$s × %2$s"
+msgstr "%1$s × %2$s"
+
+#: front-end/returns/brikpanel-returns-account.php:327
+#: templates/emails/brikpanel-return.php:91
+#: templates/emails/plain/brikpanel-return.php:62
+msgid "Reason:"
+msgstr "Sebep:"
+
+#: front-end/returns/brikpanel-returns-account.php:331
+msgid "Message from the store"
+msgstr "Mağazanın mesajı"
+
+#: front-end/returns/brikpanel-returns-account.php:339
+#: front-end/returns/brikpanel-returns-admin.php:728
+#, php-format
+msgid "Refunded: %s"
+msgstr "İade edilen tutar: %s"
+
+#: front-end/returns/brikpanel-returns-account.php:349
+msgid "Cancel this request"
+msgstr "Bu isteği iptal edin"
+
+#: front-end/returns/brikpanel-returns-account.php:399
+msgid "Choose the items you withdraw from. You do not have to give a reason."
+msgstr "Caydığınız ürünleri seçin. Sebep belirtmeniz gerekmez."
+
+#: front-end/returns/brikpanel-returns-account.php:400
+msgid "Choose what you want to send back."
+msgstr "Geri göndermek istediklerinizi seçin."
+
+#: front-end/returns/brikpanel-returns-account.php:447
+#, php-format
+msgid "Quantity of %s to return"
+msgstr "İade edilecek %s adedi"
+
+#: front-end/returns/brikpanel-returns-account.php:466
+msgid "Your name"
+msgstr "Adınız"
+
+#: front-end/returns/brikpanel-returns-account.php:470
+msgid "Email for the confirmation"
+msgstr "Onayın gönderileceği e-posta"
+
+#: front-end/returns/brikpanel-returns-account.php:485
+msgid "Reason (optional)"
+msgstr "Sebep (isteğe bağlı)"
+
+#: front-end/returns/brikpanel-returns-account.php:487
+#: front-end/returns/brikpanel-returns-account.php:593
+#: front-end/returns/brikpanel-returns-admin.php:407
+#: front-end/returns/brikpanel-returns-admin.php:748
+#: front-end/returns/brikpanel-returns-engine.php:1393
+msgid "Reason"
+msgstr "Sebep"
+
+#: front-end/returns/brikpanel-returns-account.php:501
+msgid "Message (optional)"
+msgstr "Mesaj (isteğe bağlı)"
+
+#: front-end/returns/brikpanel-returns-account.php:502
+msgid "For an exchange, write the size or colour you want."
+msgstr "Değişim istiyorsanız istediğiniz bedeni ya da rengi yazın."
+
+#: front-end/returns/brikpanel-returns-account.php:510
+#: front-end/returns/brikpanel-returns-admin.php:775
+#: front-end/returns/brikpanel-returns-settings.php:173
+msgid "Photos"
+msgstr "Fotoğraflar"
+
+#: front-end/returns/brikpanel-returns-account.php:513
+msgid "Photos (optional)"
+msgstr "Fotoğraflar (isteğe bağlı)"
+
+#: front-end/returns/brikpanel-returns-account.php:523
+#, php-format
+msgid "Up to %1$s photos, %2$s each."
+msgstr "En çok %1$s fotoğraf, her biri en fazla %2$s."
+
+#: front-end/returns/brikpanel-returns-account.php:538
+msgid "Continue"
+msgstr "Devam"
+
+#: front-end/returns/brikpanel-returns-account.php:538
+msgid "Send return request"
+msgstr "İade isteğini gönder"
+
+#: front-end/returns/brikpanel-returns-account.php:554
+#: front-end/returns/brikpanel-returns-account.php:996
+msgid "This page has expired. Please fill in the form again."
+msgstr "Bu sayfanın süresi doldu. Lütfen formu yeniden doldurun."
+
+#: front-end/returns/brikpanel-returns-account.php:561
+msgid "Check and confirm your withdrawal"
+msgstr "Caymanızı kontrol edip onaylayın"
+
+#: front-end/returns/brikpanel-returns-account.php:605
+#: templates/emails/brikpanel-return.php:102
+#: templates/emails/plain/brikpanel-return.php:71
+msgid "I withdraw from my contract for the items listed above."
+msgstr "Yukarıdaki ürünler için sözleşmeden cayıyorum."
+
+#: front-end/returns/brikpanel-returns-account.php:611
+msgid "Confirm withdrawal"
+msgstr "Caymayı onayla"
+
+#: front-end/returns/brikpanel-returns-account.php:612
+msgid "Change"
+msgstr "Değiştir"
+
+#: front-end/returns/brikpanel-returns-account.php:659
+msgid "Return another order"
+msgstr "Başka bir siparişi iade et"
+
+#: front-end/returns/brikpanel-returns-account.php:670
+msgid "Have an account?"
+msgstr "Hesabınız var mı?"
+
+#: front-end/returns/brikpanel-returns-account.php:705
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Return an order"
+msgstr "Sipariş iadesi"
+
+#: front-end/returns/brikpanel-returns-account.php:707
+msgid "None of your orders can be returned right now."
+msgstr "Şu anda siparişlerinizden hiçbiri iade edilemiyor."
+
+#: front-end/returns/brikpanel-returns-account.php:714
+#, php-format
+msgid "Order #%1$s, %2$s"
+msgstr "Sipariş #%1$s, %2$s"
+
+#: front-end/returns/brikpanel-returns-account.php:730
+msgid "Ordered without logging in?"
+msgstr "Giriş yapmadan mı sipariş verdiniz?"
+
+#: front-end/returns/brikpanel-returns-account.php:731
+msgid "Enter your order number and the email address you used for the order."
+msgstr "Sipariş numaranızı ve siparişte kullandığınız e-posta adresini yazın."
+
+#: front-end/returns/brikpanel-returns-account.php:743
+msgid "Find order"
+msgstr "Siparişi bul"
+
+#: front-end/returns/brikpanel-returns-account.php:784
+msgid "We could not open this order. Please start again."
+msgstr "Bu siparişi açamadık. Lütfen baştan başlayın."
+
+#: front-end/returns/brikpanel-returns-account.php:789
+#: front-end/returns/brikpanel-returns-account.php:1070
+msgid "This page has expired. Please send the form again."
+msgstr "Bu sayfanın süresi doldu. Lütfen formu yeniden gönderin."
+
+#: front-end/returns/brikpanel-returns-account.php:846
+#: front-end/returns/brikpanel-returns-account.php:1117
+#, php-format
+msgid "You can add up to %s photos."
+msgstr "En çok %s fotoğraf ekleyebilirsiniz."
+
+#: front-end/returns/brikpanel-returns-account.php:896
+#: front-end/returns/brikpanel-returns-account.php:953
+#: front-end/returns/brikpanel-returns-account.php:1120
+#: front-end/returns/brikpanel-returns-engine.php:172
+msgid "Choose at least one item to return."
+msgstr "İade için en az bir ürün seçin."
+
+#: front-end/returns/brikpanel-returns-account.php:900
+#: front-end/returns/brikpanel-returns-engine.php:355
+msgid "Please choose a reason for the return."
+msgstr "Lütfen iade için bir sebep seçin."
+
+#: front-end/returns/brikpanel-returns-account.php:931
+msgid "Your return request has been sent. We will email you as soon as we have checked it."
+msgstr "İade isteğiniz gönderildi. İnceler incelemez size e-posta göndereceğiz."
+
+#: front-end/returns/brikpanel-returns-account.php:957
+msgid "Please enter your name and a valid email address."
+msgstr "Lütfen adınızı ve geçerli bir e-posta adresi yazın."
+
+#: front-end/returns/brikpanel-returns-account.php:1026
+#, php-format
+msgid "We received your withdrawal. The confirmation is on its way to %s."
+msgstr "Caymanızı aldık. Onay %s adresine gönderiliyor."
+
+#: front-end/returns/brikpanel-returns-account.php:1049
+msgid "This page has expired. Please try again."
+msgstr "Bu sayfanın süresi doldu. Lütfen yeniden deneyin."
+
+#: front-end/returns/brikpanel-returns-account.php:1056
+msgid "Your return request is cancelled."
+msgstr "İade isteğiniz iptal edildi."
+
+#: front-end/returns/brikpanel-returns-account.php:1078
+msgid "Too many attempts. Please wait a few minutes and try again."
+msgstr "Çok fazla deneme yapıldı. Lütfen birkaç dakika bekleyip yeniden deneyin."
+
+#: front-end/returns/brikpanel-returns-account.php:1084
+msgid "We could not find an order with this number and email address."
+msgstr "Bu numara ve e-posta adresiyle bir sipariş bulamadık."
+
+#: front-end/returns/brikpanel-returns-admin.php:186
+msgid "The deduction is larger than the amount."
+msgstr "Kesinti tutardan büyük."
+
+#: front-end/returns/brikpanel-returns-admin.php:203
+msgid "You are not allowed to see returns."
+msgstr "İadeleri görme yetkiniz yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:267
+#: front-end/returns/brikpanel-returns.php:172
+msgctxt "return status"
+msgid "Requested"
+msgstr "İstendi"
+
+#: front-end/returns/brikpanel-returns-admin.php:271
+#: front-end/returns/brikpanel-returns.php:177
+msgctxt "return status"
+msgid "Approved"
+msgstr "Onaylandı"
+
+#: front-end/returns/brikpanel-returns-admin.php:275
+#: front-end/returns/brikpanel-returns.php:182
+msgctxt "return status"
+msgid "Item received"
+msgstr "Ürün geldi"
+
+#: front-end/returns/brikpanel-returns-admin.php:279
+#: front-end/returns/brikpanel-returns.php:192
+msgctxt "return status"
+msgid "Refunded"
+msgstr "İade edildi"
+
+#: front-end/returns/brikpanel-returns-admin.php:283
+#: front-end/returns/brikpanel-returns.php:197
+msgctxt "return status"
+msgid "Rejected"
+msgstr "Reddedildi"
+
+#: front-end/returns/brikpanel-returns-admin.php:371
+msgid "Search returns"
+msgstr "İadelerde ara"
+
+#: front-end/returns/brikpanel-returns-admin.php:372
+msgid "Order number, name or email"
+msgstr "Sipariş numarası, ad ya da e-posta"
+
+#: front-end/returns/brikpanel-returns-admin.php:394
+msgid "No returns match your search."
+msgstr "Aramanıza uyan iade yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:394
+msgid "No returns here yet."
+msgstr "Burada henüz iade yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:396
+msgid "Customers ask for returns from their account. Their requests show up here, and you get an email for each one."
+msgstr "Müşteriler iadeyi hesaplarından ister. İstekler burada görünür ve her biri için size e-posta gelir."
+
+#: front-end/returns/brikpanel-returns-admin.php:403
+#: front-end/returns/brikpanel-returns-admin.php:1235
+#: front-end/returns/brikpanel-returns-engine.php:1373
+msgid "Return"
+msgstr "İade"
+
+#: front-end/returns/brikpanel-returns-admin.php:408
+msgid "Requested"
+msgstr "İstek tarihi"
+
+#: front-end/returns/brikpanel-returns-admin.php:428
+#, php-format
+msgid "%1$s to %2$s of %3$s"
+msgstr "%1$s-%2$s / %3$s"
+
+#: front-end/returns/brikpanel-returns-admin.php:479
+#: front-end/returns/brikpanel-returns-settings.php:186
+msgid "EU withdrawal"
+msgstr "AB cayma hakkı"
+
+#: front-end/returns/brikpanel-returns-admin.php:551
+msgid "Return not found"
+msgstr "İade bulunamadı"
+
+#: front-end/returns/brikpanel-returns-admin.php:553
+#: front-end/returns/brikpanel-returns-engine.php:515
+#: front-end/returns/brikpanel-returns-engine.php:737
+msgid "This return no longer exists."
+msgstr "Bu iade artık yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:566
+msgid "Approve"
+msgstr "Onayla"
+
+#: front-end/returns/brikpanel-returns-admin.php:567
+msgid "Item received"
+msgstr "Ürün geldi"
+
+#: front-end/returns/brikpanel-returns-admin.php:568
+msgid "Refund"
+msgstr "Parayı iade et"
+
+#: front-end/returns/brikpanel-returns-admin.php:569
+msgid "Reject"
+msgstr "Reddet"
+
+#: front-end/returns/brikpanel-returns-admin.php:623
+msgid "A refund for this return is in progress. Reload the page in a minute."
+msgstr "Bu iadenin para iadesi sürüyor. Bir dakika sonra sayfayı yenileyin."
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Approve the return"
+msgstr "İadeyi onayla"
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Message to the customer (optional)"
+msgstr "Müşteriye mesaj (isteğe bağlı)"
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "For example where to send the items and how to pack them."
+msgstr "Örneğin ürünlerin nereye gönderileceği ve nasıl paketleneceği."
+
+#: front-end/returns/brikpanel-returns-admin.php:641
+msgid "Approve and email the customer"
+msgstr "Onayla ve müşteriye e-posta gönder"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reject the return"
+msgstr "İadeyi reddet"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reason for the customer"
+msgstr "Müşteriye sebep"
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "The customer gets this text by email."
+msgstr "Müşteri bu metni e-postayla alır."
+
+#: front-end/returns/brikpanel-returns-admin.php:644
+msgid "Reject and email the customer"
+msgstr "Reddet ve müşteriye e-posta gönder"
+
+#: front-end/returns/brikpanel-returns-admin.php:672
+msgid "Paid per item"
+msgstr "Ürün başına ödenen"
+
+#: front-end/returns/brikpanel-returns-admin.php:756
+msgid "Your message to the customer"
+msgstr "Müşteriye mesajınız"
+
+#: front-end/returns/brikpanel-returns-admin.php:780
+#, php-format
+msgid "Photo %s from the customer"
+msgstr "Müşterinin %s. fotoğrafı"
+
+#: front-end/returns/brikpanel-returns-admin.php:802
+#: front-end/returns/brikpanel-returns-engine.php:1407
+#: templates/emails/brikpanel-return.php:101
+#: templates/emails/plain/brikpanel-return.php:71
+msgid "Withdrawal statement"
+msgstr "Cayma beyanı"
+
+#: front-end/returns/brikpanel-returns-admin.php:808
+#: templates/emails/brikpanel-return.php:123
+#: templates/emails/plain/brikpanel-return.php:78
+msgid "Sent on"
+msgstr "Gönderilme zamanı"
+
+#: front-end/returns/brikpanel-returns-admin.php:811
+msgid "Refund due by"
+msgstr "Para iadesinin son günü"
+
+#: front-end/returns/brikpanel-returns-admin.php:815
+msgid "You may wait with the refund until the items are back or the customer shows they sent them."
+msgstr "Para iadesi için ürünler size ulaşana ya da müşteri gönderdiğini gösterene kadar bekleyebilirsiniz."
+
+#: front-end/returns/brikpanel-returns-admin.php:842
+msgid "Ordered on"
+msgstr "Sipariş tarihi"
+
+#: front-end/returns/brikpanel-returns-admin.php:851
+#: front-end/returns/brikpanel-returns-engine.php:744
+msgid "The order of this return no longer exists."
+msgstr "Bu iadenin siparişi artık yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:866
+msgid "History"
+msgstr "Geçmiş"
+
+#: front-end/returns/brikpanel-returns-admin.php:948
+msgid "Did the items arrive?"
+msgstr "Ürünler geldi mi?"
+
+#: front-end/returns/brikpanel-returns-admin.php:949
+msgid "Mark the return as received when the items are back. You refund in the next step."
+msgstr "Ürünler geri gelince iadeyi geldi olarak işaretleyin. Parayı bir sonraki adımda iade edersiniz."
+
+#: front-end/returns/brikpanel-returns-admin.php:953
+msgid "Items received"
+msgstr "Ürünler geldi"
+
+#: front-end/returns/brikpanel-returns-admin.php:1001
+msgid "Refund the return"
+msgstr "İadenin parasını iade et"
+
+#: front-end/returns/brikpanel-returns-admin.php:1009
+msgid "Also refund shipping"
+msgstr "Kargo ücretini de iade et"
+
+#: front-end/returns/brikpanel-returns-admin.php:1014
+msgid "Deduction (optional)"
+msgstr "Kesinti (isteğe bağlı)"
+
+#: front-end/returns/brikpanel-returns-admin.php:1016
+msgid "Refund amount"
+msgstr "İade tutarı"
+
+#: front-end/returns/brikpanel-returns-admin.php:1022
+msgid "Put the items back in stock"
+msgstr "Ürünleri stoğa geri koy"
+
+#: front-end/returns/brikpanel-returns-admin.php:1025
+msgid "These items were already put back in stock by an earlier refund."
+msgstr "Bu ürünler daha önceki bir para iadesiyle zaten stoğa geri kondu."
+
+#: front-end/returns/brikpanel-returns-admin.php:1032
+#: front-end/returns/brikpanel-returns-admin.php:1040
+msgid "Refund manually"
+msgstr "Elle iade et"
+
+#: front-end/returns/brikpanel-returns-admin.php:1036
+#, php-format
+msgid "Refund via %s"
+msgstr "%s ile iade et"
+
+#: front-end/returns/brikpanel-returns-admin.php:1044
+msgid "This payment method cannot send money back by itself. Record the refund here and pay the customer yourself, for example by bank transfer."
+msgstr "Bu ödeme yöntemi parayı kendisi geri gönderemiyor. İadeyi burada kaydedin ve müşteriye parayı kendiniz ödeyin, örneğin havaleyle."
+
+#: front-end/returns/brikpanel-returns-admin.php:1058
+#: front-end/returns/brikpanel-returns-admin.php:1059
+msgid "Photo from the customer"
+msgstr "Müşterinin fotoğrafı"
+
+#: front-end/returns/brikpanel-returns-admin.php:1083
+msgid "You are not allowed to handle returns."
+msgstr "İadelerle ilgilenme yetkiniz yok."
+
+#: front-end/returns/brikpanel-returns-admin.php:1102
+msgid "The return is refunded. WooCommerce sent the customer its refund email."
+msgstr "İadenin parası iade edildi. WooCommerce müşteriye kendi iade e-postasını gönderdi."
+
+#: front-end/returns/brikpanel-returns-admin.php:1107
+msgid "The return is approved and the customer got an email."
+msgstr "İade onaylandı ve müşteriye e-posta gitti."
+
+#: front-end/returns/brikpanel-returns-admin.php:1108
+msgid "The return is rejected and the customer got an email."
+msgstr "İade reddedildi ve müşteriye e-posta gitti."
+
+#: front-end/returns/brikpanel-returns-admin.php:1109
+msgid "The return is marked as received."
+msgstr "İade geldi olarak işaretlendi."
+
+#: front-end/returns/brikpanel-returns-admin.php:1113
+#: front-end/returns/brikpanel-returns-engine.php:528
+msgid "Unknown action."
+msgstr "Bilinmeyen işlem."
+
+#: front-end/returns/brikpanel-returns-admin.php:1235
+msgid "Withdrawal"
+msgstr "Cayma"
+
+#: front-end/returns/brikpanel-returns-admin.php:1251
+#: front-end/returns/brikpanel-returns-engine.php:1334
+#: front-end/returns/brikpanel-returns-engine.php:1347
+#: front-end/returns/brikpanel-returns-engine.php:1413
+msgid "Return requests"
+msgstr "İade istekleri"
+
+#: front-end/returns/brikpanel-returns-emails.php:111
+#, php-format
+msgid "%1$s (UTC%2$s)"
+msgstr "%1$s (UTC%2$s)"
+
+#: front-end/returns/brikpanel-returns-engine.php:142
+msgid "One of the quantities is no longer available to return. Please check the form again."
+msgstr "Adetlerden biri artık iade edilemiyor. Lütfen formu yeniden kontrol edin."
+
+#: front-end/returns/brikpanel-returns-engine.php:233
+msgid "Returns are not available in this store."
+msgstr "Bu mağazada iade yapılamıyor."
+
+#: front-end/returns/brikpanel-returns-engine.php:236
+msgid "This order cannot be returned."
+msgstr "Bu sipariş iade edilemez."
+
+#: front-end/returns/brikpanel-returns-engine.php:239
+msgid "This order cannot be returned yet."
+msgstr "Bu sipariş henüz iade edilemez."
+
+#: front-end/returns/brikpanel-returns-engine.php:243
+msgid "The return period for this order has ended."
+msgstr "Bu siparişin iade süresi doldu."
+
+#: front-end/returns/brikpanel-returns-engine.php:250
+#: front-end/returns/class-brikpanel-returns-store.php:503
+msgid "There is already an open return for this order."
+msgstr "Bu sipariş için zaten açık bir iade var."
+
+#: front-end/returns/brikpanel-returns-engine.php:261
+msgid "Everything in this order has already been returned."
+msgstr "Bu siparişteki her şey zaten iade edildi."
+
+#: front-end/returns/brikpanel-returns-engine.php:320
+msgid "This order is being updated. Please try again in a moment."
+msgstr "Bu sipariş şu anda güncelleniyor. Lütfen biraz sonra yeniden deneyin."
+
+#: front-end/returns/brikpanel-returns-engine.php:360
+msgid "Please add at least one photo of the item."
+msgstr "Lütfen ürünün en az bir fotoğrafını ekleyin."
+
+#: front-end/returns/brikpanel-returns-engine.php:438
+#, php-format
+msgid "Withdrawal #%1$s received from the customer: %2$s."
+msgstr "Müşteriden cayma #%1$s alındı: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:441
+#, php-format
+msgid "Return #%1$s requested by the customer: %2$s."
+msgstr "Müşteri iade #%1$s istedi: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:445
+#, php-format
+msgid "Reason: %s"
+msgstr "Sebep: %s"
+
+#: front-end/returns/brikpanel-returns-engine.php:483
+msgid "This return was changed in the meantime. The page shows the latest state now."
+msgstr "Bu iade bu arada değişti. Sayfa artık son hâlini gösteriyor."
+
+#: front-end/returns/brikpanel-returns-engine.php:531
+msgid "Please tell the customer why the return is rejected."
+msgstr "Lütfen müşteriye iadenin neden reddedildiğini yazın."
+
+#: front-end/returns/brikpanel-returns-engine.php:545
+#, php-format
+msgid "Return #%s approved."
+msgstr "İade #%s onaylandı."
+
+#: front-end/returns/brikpanel-returns-engine.php:547
+#, php-format
+msgid "Return #%s rejected."
+msgstr "İade #%s reddedildi."
+
+#: front-end/returns/brikpanel-returns-engine.php:549
+#, php-format
+msgid "Return #%s: the items arrived back."
+msgstr "İade #%s: ürünler geri geldi."
+
+#: front-end/returns/brikpanel-returns-engine.php:551
+#, php-format
+msgid "Return #%s cancelled by the customer."
+msgstr "İade #%s müşteri tarafından iptal edildi."
+
+#: front-end/returns/brikpanel-returns-engine.php:747
+msgid "This order was refunded in the meantime. Check the amount again."
+msgstr "Bu siparişe bu arada para iadesi yapıldı. Tutarı yeniden kontrol edin."
+
+#: front-end/returns/brikpanel-returns-engine.php:752
+msgid "There is nothing left to refund for this return."
+msgstr "Bu iade için iade edilecek bir şey kalmadı."
+
+#: front-end/returns/brikpanel-returns-engine.php:759
+#, php-format
+msgid "Only %s can still be refunded on this order."
+msgstr "Bu siparişte en fazla %s daha iade edilebilir."
+
+#: front-end/returns/brikpanel-returns-engine.php:773
+#, php-format
+msgid "Return #%1$s: %2$s"
+msgstr "İade #%1$s: %2$s"
+
+#: front-end/returns/brikpanel-returns-engine.php:798
+msgid "WooCommerce could not create the refund."
+msgstr "WooCommerce para iadesini oluşturamadı."
+
+#: front-end/returns/brikpanel-returns-engine.php:827
+#, php-format
+msgid "Return #%1$s refunded: %2$s."
+msgstr "İade #%1$s için para iade edildi: %2$s."
+
+#: front-end/returns/brikpanel-returns-engine.php:908
+msgid "The refund was deleted in WooCommerce."
+msgstr "Para iadesi WooCommerce'te silindi."
+
+#: front-end/returns/brikpanel-returns-engine.php:1027
+msgid "One of the photos could not be used. Please send JPG, PNG or WebP images."
+msgstr "Fotoğraflardan biri kullanılamadı. Lütfen JPG, PNG ya da WebP resim gönderin."
+
+#: front-end/returns/brikpanel-returns-engine.php:1057
+msgid "Photos cannot be saved in this store right now. Please send the request without photos."
+msgstr "Bu mağazada şu anda fotoğraf kaydedilemiyor. Lütfen isteği fotoğrafsız gönderin."
+
+#: front-end/returns/brikpanel-returns-engine.php:1095
+#, php-format
+msgid "Each photo can be at most %s."
+msgstr "Her fotoğraf en fazla %s olabilir."
+
+#: front-end/returns/brikpanel-returns-engine.php:1155
+msgid "You are not allowed to see this file."
+msgstr "Bu dosyayı görme yetkiniz yok."
+
+#: front-end/returns/brikpanel-returns-engine.php:1160
+msgid "This file no longer exists."
+msgstr "Bu dosya artık yok."
+
+#: front-end/returns/brikpanel-returns-engine.php:1385
+msgid "Requested on"
+msgstr "İstendiği tarih"
+
+#: front-end/returns/brikpanel-returns-engine.php:1397
+msgid "Note"
+msgstr "Not"
+
+#: front-end/returns/brikpanel-returns-settings.php:49
+msgid "Open the orders list"
+msgstr "Sipariş listesini aç"
+
+#: front-end/returns/brikpanel-returns-settings.php:131
+msgid "Customers ask for a return from their account, choose the items, a reason and add photos. You approve, mark the items as received and refund in one place: Returns, next to Orders."
+msgstr "Müşteriler iadeyi hesaplarından ister, ürünleri ve sebebi seçer, fotoğraf ekler. Siz tek yerden onaylar, ürünlerin geldiğini işaretler ve parayı iade edersiniz: Siparişler'in yanındaki İadeler sayfası."
+
+#: front-end/returns/brikpanel-returns-settings.php:134
+msgid "Customer returns"
+msgstr "Müşteri iadeleri"
+
+#: front-end/returns/brikpanel-returns-settings.php:135
+msgid "Let customers request returns from their account"
+msgstr "Müşteriler hesaplarından iade isteyebilsin"
+
+#: front-end/returns/brikpanel-returns-settings.php:141
+msgid "Return window"
+msgstr "İade süresi"
+
+#: front-end/returns/brikpanel-returns-settings.php:142
+msgid "days after the order is completed"
+msgstr "gün, sipariş tamamlandıktan sonra"
+
+#: front-end/returns/brikpanel-returns-settings.php:143
+msgid "0 means no limit."
+msgstr "0 süre sınırı yok demektir."
+
+#: front-end/returns/brikpanel-returns-settings.php:155
+msgid "Returnable statuses"
+msgstr "İade edilebilen durumlar"
+
+#: front-end/returns/brikpanel-returns-settings.php:156
+msgid "Orders in these statuses can be returned. Add a status such as \"Delivered\" if your store uses one."
+msgstr "Bu durumlardaki siparişler iade edilebilir. Mağazanız \"Teslim edildi\" gibi bir durum kullanıyorsa onu da ekleyin."
+
+#: front-end/returns/brikpanel-returns-settings.php:165
+msgid "Return reasons"
+msgstr "İade sebepleri"
+
+#: front-end/returns/brikpanel-returns-settings.php:166
+msgid "One reason per line. Customers choose one of them."
+msgstr "Her satıra bir sebep. Müşteriler bunlardan birini seçer."
+
+#: front-end/returns/brikpanel-returns-settings.php:174
+msgid "Customers can add up to 5 photos of the items."
+msgstr "Müşteriler ürünlerin en çok 5 fotoğrafını ekleyebilir."
+
+#: front-end/returns/brikpanel-returns-settings.php:181
+msgid "Required"
+msgstr "Zorunlu"
+
+#: front-end/returns/brikpanel-returns-settings.php:187
+msgid "Use the EU \"Withdraw from contract here\" wording and steps"
+msgstr "AB'nin \"Sözleşmeden burada cayın\" ifadesini ve adımlarını kullan"
+
+#: front-end/returns/brikpanel-returns-settings.php:188
+msgid "Required for stores selling to consumers in the EU since 19 June 2026. Customers can withdraw without a reason, also before the order is completed, until at least 14 days after it is completed, and confirm it in a second step. They get an email with the date and time. If your deliveries take longer, add the delivery time to the return window."
+msgstr "AB'deki tüketicilere satış yapan mağazalar için 19 Haziran 2026'dan beri zorunlu. Müşteriler sebep göstermeden, sipariş tamamlanmadan önce de ve tamamlandıktan en az 14 gün sonrasına kadar cayabilir ve bunu ikinci bir adımda onaylar. Tarih ve saatin yazdığı bir e-posta alırlar. Teslimatlarınız daha uzun sürüyorsa teslim süresini iade süresine ekleyin."
+
+#: front-end/returns/brikpanel-returns-settings.php:247
+msgid "Returns link"
+msgstr "İade bağlantısı"
+
+#: front-end/returns/brikpanel-returns-settings.php:254
+msgid "Customers without an account return their order here with the order number and email. Put this link in your store footer, for example as \"Withdraw from contract here\" for EU customers."
+msgstr "Hesabı olmayan müşteriler siparişlerini burada sipariş numarası ve e-postayla iade eder. Bu bağlantıyı mağazanızın alt kısmına koyun, örneğin AB'deki müşteriler için \"Sözleşmeden burada cayın\" olarak."
+
+#: front-end/returns/brikpanel-returns-settings.php:280
+msgid "Flexible Refund"
+msgstr "Flexible Refund"
+
+#: front-end/returns/brikpanel-returns-settings.php:282
+msgid "The Flexible Refund plugin is also active. With both turned on, customers see two return buttons on their orders. Keep one of them."
+msgstr "Flexible Refund eklentisi de açık. İkisi de açıkken müşteriler siparişlerinde iki iade düğmesi görür. Birini bırakın."
+
+#: front-end/returns/brikpanel-returns.php:111
+msgid "Damaged or defective"
+msgstr "Hasarlı ya da kusurlu"
+
+#: front-end/returns/brikpanel-returns.php:112
+msgid "Wrong size"
+msgstr "Yanlış beden"
+
+#: front-end/returns/brikpanel-returns.php:113
+msgid "Not as described"
+msgstr "Açıklamadaki gibi değil"
+
+#: front-end/returns/brikpanel-returns.php:114
+msgid "Changed my mind"
+msgstr "Fikrimi değiştirdim"
+
+#: front-end/returns/brikpanel-returns.php:115
+msgctxt "return reason"
+msgid "Other"
+msgstr "Diğer"
+
+#: front-end/returns/brikpanel-returns.php:187
+msgctxt "return status"
+msgid "Refunding"
+msgstr "Para iade ediliyor"
+
+#: front-end/returns/brikpanel-returns.php:202
+msgctxt "return status"
+msgid "Cancelled"
+msgstr "İptal edildi"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:133
+#: front-end/returns/class-brikpanel-returns-emails.php:147
+msgid "New return request"
+msgstr "Yeni iade isteği"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:134
+msgid "Sent to the store when a customer asks for a return or withdraws from an order."
+msgstr "Bir müşteri iade istediğinde ya da bir siparişten caydığında mağazaya gönderilir."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:142
+msgid "[{site_title}]: New return request #{return_number}"
+msgstr "[{site_title}]: Yeni iade isteği #{return_number}"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:160
+#, php-format
+msgid "%1$s withdrew from the contract for order #%2$s."
+msgstr "%1$s, #%2$s numaralı sipariş için sözleşmeden caydı."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:163
+#, php-format
+msgid "%1$s asked to return items from order #%2$s."
+msgstr "%1$s, #%2$s numaralı siparişten ürün iade etmek istiyor."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:166
+msgid "The order is not completed yet: stop the shipment if you still can."
+msgstr "Sipariş henüz tamamlanmadı: gönderimi hâlâ durdurabiliyorsanız durdurun."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:180
+msgid "Recipients"
+msgstr "Alıcılar"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:183
+#, php-format
+msgid "Enter recipients (comma separated) for this email. Defaults to %s."
+msgstr "Bu e-postanın alıcılarını yazın (virgülle ayırarak). Boş bırakılırsa %s."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:200
+#: front-end/returns/class-brikpanel-returns-emails.php:213
+msgid "Return request received"
+msgstr "İade isteği alındı"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:201
+msgid "Sent to the customer when their return request arrives. For an EU withdrawal it is the legally required acknowledgement and is always sent."
+msgstr "Müşterinin iade isteği gelince müşteriye gönderilir. AB caymasında yasanın istediği alındı bildirimidir ve her zaman gönderilir."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:208
+msgid "We received your return request for order #{order_number}"
+msgstr "#{order_number} numaralı siparişiniz için iade isteğinizi aldık"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:223
+msgid "Your withdrawal from order #{order_number}"
+msgstr "#{order_number} numaralı siparişten caymanız"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:231
+msgid "Withdrawal received"
+msgstr "Cayma alındı"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:253
+#, php-format
+msgid "We received your withdrawal from the contract on %s. This email confirms it. Here is what you sent:"
+msgstr "Sözleşmeden caymanızı %s tarihinde aldık. Bu e-posta bunu onaylar. Gönderdikleriniz:"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:256
+#, php-format
+msgid "We received your return request on %s. We will check it and let you know by email."
+msgstr "İade isteğinizi %s tarihinde aldık. İnceleyip size e-postayla haber vereceğiz."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:267
+#: front-end/returns/class-brikpanel-returns-emails.php:280
+msgid "Return approved"
+msgstr "İade onaylandı"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:268
+msgid "Sent to the customer when you approve a return, with your message (for example where to send the items)."
+msgstr "Bir iadeyi onayladığınızda mesajınızla birlikte müşteriye gönderilir (örneğin ürünlerin nereye gönderileceği)."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:275
+msgid "Your return for order #{order_number} is approved"
+msgstr "#{order_number} numaralı siparişinizin iadesi onaylandı"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:285
+msgid "Good news: your return is approved. Please follow the instructions below."
+msgstr "Güzel haber: iadeniz onaylandı. Lütfen aşağıdaki talimatları izleyin."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:296
+msgid "Return rejected"
+msgstr "İade reddedildi"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:297
+msgid "Sent to the customer when you reject a return, with your reason."
+msgstr "Bir iadeyi reddettiğinizde sebebinizle birlikte müşteriye gönderilir."
+
+#: front-end/returns/class-brikpanel-returns-emails.php:304
+msgid "About your return for order #{order_number}"
+msgstr "#{order_number} numaralı siparişinizin iadesi hakkında"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:309
+msgid "Return not accepted"
+msgstr "İade kabul edilmedi"
+
+#: front-end/returns/class-brikpanel-returns-emails.php:314
+msgid "We are sorry, we could not accept your return. Here is why:"
+msgstr "Üzgünüz, iadenizi kabul edemedik. Sebebi:"
+
+#: front-end/returns/class-brikpanel-returns-store.php:452
+msgid "Returns could not be saved. Please try again later."
+msgstr "İadeler kaydedilemedi. Lütfen daha sonra yeniden deneyin."
+
+#: templates/emails/brikpanel-return.php:68
+#: templates/emails/plain/brikpanel-return.php:36
+#, php-format
+msgid "Return #%1$s for order #%2$s"
+msgstr "#%2$s numaralı sipariş için iade #%1$s"
+
+#: templates/emails/brikpanel-return.php:94
+#: templates/emails/plain/brikpanel-return.php:65
+msgid "Note:"
+msgstr "Not:"
+
+#: templates/emails/brikpanel-return.php:131
+#: templates/emails/plain/brikpanel-return.php:82
+msgid "View your return"
+msgstr "İadenizi görün"
+
+#: templates/emails/brikpanel-return.php:134
+#: templates/emails/plain/brikpanel-return.php:85
+msgid "Open the return"
+msgstr "İadeyi aç"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2256
+#: includes/brikpanel-enqueue.php:588
+msgctxt "dashboard card title: sales from the marketplaces BrikMarket connects"
+msgid "Marketplaces"
+msgstr "Pazaryerleri"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2246
+msgid "Best sellers on marketplaces"
+msgstr "Pazaryerlerinde çok satanlar"
+
+#: includes/brikpanel-enqueue.php:591
+msgid "Your website"
+msgstr "Web siteniz"
+
+#: includes/brikpanel-enqueue.php:592
+msgid "No marketplace orders in this period."
+msgstr "Bu dönemde pazaryeri siparişi yok."
+
+#: includes/brikpanel-enqueue.php:594
+msgid "Marketplace sales per day"
+msgstr "Günlük pazaryeri satışları"
+
+#: includes/brikpanel-enqueue.php:595
+msgid "Marketplace sales per hour"
+msgstr "Saatlik pazaryeri satışları"
+
+#. translators: %s: units of one product sold on marketplaces, already
+#. formatted (e.g. 3).
+#: includes/brikpanel-enqueue.php:599
+#, php-format
+msgctxt "units of one product sold on marketplaces, e.g. \"3 sold\""
+msgid "%s sold"
+msgid_plural "%s sold"
+msgstr[0] "%s adet satıldı"
+msgstr[1] "%s adet satıldı"
+
+#: front-end/dashboard/brikpanel-dashboard.php:2277
+msgid "Where your sales came from"
+msgstr "Satışlarınız nereden geldi"

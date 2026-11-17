@@ -387,7 +387,15 @@ function brikpanel_orders_compact_fill_column( $column, $order ) {
 
 		case 'brikpanel_customer':
 			$name = brikpanel_orders_compact_customer_name( $order );
-			echo '<span class="bp-order-customer">' . ( '' !== $name ? esc_html( $name ) : '&ndash;' ) . '</span>';
+			if ( '' !== $name ) {
+				// Three boxes so a long name gives way and ends in "…" instead of
+				// pushing the amount off the card ("Customer name" in
+				// brikpanel-orders.css). The title shows the name whole on hover and
+				// sets the stylesheet's minimum width for the column.
+				echo '<span class="bp-order-customer" title="' . esc_attr( $name ) . '"><span class="bp-order-customer-fit"><span class="bp-order-customer-name" dir="auto">' . esc_html( $name ) . '</span></span></span>';
+			} else {
+				echo '<span class="bp-order-customer">&ndash;</span>';
+			}
 			echo brikpanel_orders_compact_detail_html( $order ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- every value is escaped while the markup is built.
 			break;
 

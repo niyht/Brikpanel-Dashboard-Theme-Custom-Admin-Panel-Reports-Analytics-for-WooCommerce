@@ -412,18 +412,9 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         true
     );
 
-    // Chart.js: only the BrikMarket marketplace share ring still uses it. The
-    // other charts are drawn as SVG by brikpanel-dashboard-viz.js.
-    $bp_dash_chartjs = function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active();
-    if ( $bp_dash_chartjs ) {
-        wp_enqueue_script(
-            'chart-js',
-            BRIKPANEL_URL . 'assets/js/chart.js',
-            [],
-            BRIKPANEL_VERSION,
-            true
-        );
-    }
+    // No Chart.js on the dashboard since 3.3.53: the BrikMarket marketplace
+    // share ring was its last chart. The Marketplaces card's ring (website and
+    // each marketplace) is drawn by brikpanel-dashboard-viz.js.
 
     // The dashboard's own charts (sales line, funnel ribbon, order-rate
     // squares, dot strips, hourly bars, the store cards' small lines).
@@ -472,7 +463,6 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         BRIKPANEL_URL . 'front-end/dashboard/brikpanel-dashboard.js',
         array_merge(
             [ 'flatpickr-js', 'cobe-globe', 'brikpanel_dashboard_viz', 'brikpanel_dashboard_regions' ],
-            $bp_dash_chartjs ? [ 'chart-js' ] : [],
             brikpanel_fit_table_dep(),
             brikpanel_fit_row_dep(),
             brikpanel_narrow_deps( [ 'overflow', 'tip', 'format', 'tiles', 'scroll_strip' ] )
@@ -523,11 +513,25 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         }
     }
 
+    $bp_region_maps = ['v' => '', 'cc' => []];
+    if (!class_exists('Brikpanel_Dashboard_Regions') && is_readable(BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-regions.php')) {
+        require_once BRIKPANEL_PATH . 'front-end/dashboard/brikpanel-dashboard-regions.php';
+    }
+    if (class_exists('Brikpanel_Dashboard_Regions')) {
+        $bp_region_maps = [
+            'v'  => (string) Brikpanel_Dashboard_Regions::version(),
+            'cc' => array_keys((array) Brikpanel_Dashboard_Regions::countries()),
+        ];
+    }
+
     wp_localize_script('brikpanel_dashboard_scripts', 'brikpanelDashboard', [
         'ajax_url' => admin_url('admin-ajax.php'),
         'saved_range' => $bp_saved_range['range'],
         'saved_start' => $bp_saved_range['start'],
         'saved_end'   => $bp_saved_range['end'],
+        // The store's today: the date button leaves the year out of a range
+        // inside this year, like the server writes it.
+        'store_today' => wp_date('Y-m-d'),
         'nonce'    => wp_create_nonce('brikpanel_dashboard_nonce'),
         'export_url'   => admin_url('admin-post.php'),
         'export_nonce' => wp_create_nonce('brikpanel_dashboard_export'),
@@ -535,6 +539,9 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
         // Region maps (assets/maps/<cc>.json) and the site, which keys the
         // once-a-day map animation (sites of a network share one address).
         'maps_url' => BRIKPANEL_URL . 'assets/maps/',
+        // The countries that have a region map, and the map data's version
+        // (3.3.50): the Locations card offers their maps for any store.
+        'region_maps' => $bp_region_maps,
         'blog'     => get_current_blog_id(),
         // Quick "Add expense" from the Profit > Expenses card. Posts straight to
         // the Expenses module's own save endpoint so recurring entries are
@@ -557,8 +564,6 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'no_orders'     => __('No orders', 'brikpanel'),
             'no_data'       => __('No data for this period', 'brikpanel'),
             'product'       => __('Product', 'brikpanel'),
-            'qty_sold'      => __('Qty sold', 'brikpanel'),
-            'source'        => __('Source', 'brikpanel'),
             'status_labels' => $bp_order_statuses,
             'city'          => __('City', 'brikpanel'),
             'browsing'       => __('Browsing', 'brikpanel'),
@@ -579,12 +584,16 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'live_country'      => __('Country: %s', 'brikpanel'),
             // Live visitors list after the page's security token expired.
             'live_reload'       => __('Reload the page to see live visitors.', 'brikpanel'),
-            'aov'            => __('AOV', 'brikpanel'),
-            'category'       => __('Category', 'brikpanel'),
             'share'          => __('Share', 'brikpanel'),
-            'vs_prev'        => __('vs. prev.', 'brikpanel'),
-            'mp_of_total'    => __('of', 'brikpanel'),
-            'mp_combined'    => __('combined revenue', 'brikpanel'),
+            // The Marketplaces cards (BrikMarket, 3.3.53). The store's own
+            // website, a part of the ring beside its marketplaces.
+            'mp_website'     => __('Your website', 'brikpanel'),
+            'mp_none'        => __('No marketplace orders in this period.', 'brikpanel'),
+            // The card's columns, for screen readers.
+            'mp_cols_day'    => __('Marketplace sales per day', 'brikpanel'),
+            'mp_cols_hour'   => __('Marketplace sales per hour', 'brikpanel'),
+            /* translators: %s: units of one product sold on marketplaces, already formatted (e.g. 3). */
+            'mp_units_sold'  => brikpanel_js_plural(_nx_noop('%s sold', '%s sold', 'units of one product sold on marketplaces, e.g. "3 sold"', 'brikpanel')),
             'mp_no_categories' => __('No category data. Marketplace items must be linked to your WooCommerce catalog (by product or SKU) for the category breakdown to appear.', 'brikpanel'),
             'device_desktop'   => __('Desktop', 'brikpanel'),
             'device_mobile'    => __('Mobile', 'brikpanel'),
@@ -647,6 +656,27 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'loc_top_regions_customers'   => __('Top regions by customers', 'brikpanel'),
             'loc_sales'                   => _x('Sales', 'region map tooltip: money from the orders of a region', 'brikpanel'),
             'loc_map_alt'                 => __('Order locations map', 'brikpanel'),
+            // The Locations card as one card (3.3.50): the map button, the
+            // count over the list and its busiest place, the row's map icon.
+            /* translators: %s: a country's name, e.g. "Türkiye" or "US". The button opens that country's region map. */
+            'loc_view_map'                => _x('%s map', 'Locations card button: the region map of a country', 'brikpanel'),
+            'loc_open_map'                => __('Open its map', 'brikpanel'),
+            /* translators: %s: number of countries, already formatted. */
+            'loc_n_countries'             => brikpanel_js_plural(_n_noop('%s country', '%s countries', 'brikpanel')),
+            /* translators: %s: number of provinces, already formatted. */
+            'loc_n_provinces'             => brikpanel_js_plural(_n_noop('%s province', '%s provinces', 'brikpanel')),
+            /* translators: %s: number of states, already formatted. */
+            'loc_n_states'                => brikpanel_js_plural(_n_noop('%s state', '%s states', 'brikpanel')),
+            /* translators: %s: number of regions of a country, already formatted. */
+            'loc_n_regions'               => brikpanel_js_plural(_n_noop('%s region', '%s regions', 'brikpanel')),
+            /* translators: 1: a country or region, e.g. "Türkiye"; 2: its share of the orders, e.g. "52%". */
+            'loc_most_orders'             => __('Most orders: %1$s (%2$s)', 'brikpanel'),
+            /* translators: 1: a country or region, e.g. "Türkiye"; 2: its share of the customers, e.g. "52%". */
+            'loc_most_customers'          => __('Most customers: %1$s (%2$s)', 'brikpanel'),
+            /* translators: 1: a country, e.g. "Türkiye"; 2: its share of the visitors, e.g. "52%". */
+            'loc_most_visitors'           => __('Most visitors: %1$s (%2$s)', 'brikpanel'),
+            'loc_map_loading'             => __('Loading the map…', 'brikpanel'),
+            'loc_map_error'               => __('The map could not be loaded. Please try again.', 'brikpanel'),
             /* translators: %s: number of orders, already formatted (e.g. 11). */
             'loc_unplaced_province'       => brikpanel_js_plural(_n_noop('%s order from an unknown province', '%s orders from an unknown province', 'brikpanel')),
             /* translators: %s: number of orders, already formatted (e.g. 11). */
@@ -679,7 +709,6 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'export_button'         => __('Export Excel', 'brikpanel'),
             'export_preparing'      => __('Preparing…', 'brikpanel'),
             'export_select_dates'   => __('Pick a custom date range first.', 'brikpanel'),
-            'period_loading'        => __('Loading…', 'brikpanel'),
             'globe_alt'             => __('Order locations globe', 'brikpanel'),
             'globe_alt_customers'   => __('Customer locations globe', 'brikpanel'),
             'globe_alt_visitors'    => __('Visitor locations globe', 'brikpanel'),
@@ -712,6 +741,8 @@ function brikpanel_enqueue_custom_dashboard_assets($hook) {
             'sales_vs_day_before' => __('vs the day before', 'brikpanel'),
             /* translators: %s: number of days in the period being compared, e.g. 30. */
             'sales_vs_days'      => brikpanel_js_plural(_n_noop('vs previous %s day', 'vs previous %s days', 'brikpanel')),
+            // Month to date, weighed against the same days of last month.
+            'sales_vs_last_month' => __('vs the same period last month', 'brikpanel'),
             'sales_prev_period'  => __('Previous period', 'brikpanel'),
             /* translators: %s: a day, e.g. "Mon, Oct 4". The day is not over yet. */
             'sales_so_far'       => __('%s, so far', 'brikpanel'),

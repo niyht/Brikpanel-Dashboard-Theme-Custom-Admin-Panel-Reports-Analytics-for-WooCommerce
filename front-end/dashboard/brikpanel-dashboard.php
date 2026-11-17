@@ -60,6 +60,8 @@ class Brikpanel_Dashboard {
         'locations' => [ 'region', 'world' ],
         // What the Locations card shows (3.3.40).
         'locations_view' => [ 'orders', 'customers', 'visitors' ],
+        // Best sellers on marketplaces (BrikMarket, 3.3.53).
+        'mp'        => [ 'products', 'categories' ],
     ];
 
     // The Most viewed pages window loads this many rows at a time; the Excel
@@ -165,6 +167,8 @@ class Brikpanel_Dashboard {
         add_action( 'wp_ajax_brikpanel_dash_save_tab', [ $this, 'ajax_save_tab' ] );
         // The Products and pages window: a list of the period, a load at a time.
         add_action( 'wp_ajax_brikpanel_dash_list', [ $this, 'ajax_list' ] );
+        // The Locations card: one country's region map, when it is opened (3.3.50).
+        add_action( 'wp_ajax_brikpanel_dash_regions', [ $this, 'ajax_regions' ] );
         // CSV export of the current date-range report (streamed download).
         add_action( 'admin_post_brikpanel_dashboard_export', [ $this, 'handle_export' ] );
 
@@ -192,7 +196,7 @@ class Brikpanel_Dashboard {
      * @return string[]
      */
     public static function allowed_ranges() {
-        return [ 'today', 'yesterday', '7days', '30days', '90days', 'custom' ];
+        return [ 'today', 'yesterday', '7days', '30days', '90days', 'mtd', 'custom' ];
     }
 
     /**
@@ -859,9 +863,11 @@ class Brikpanel_Dashboard {
     }
 
     /**
-     * "Customize" at the end of the date line: opens the "Dashboard sections"
-     * list in Settings. Only for someone who can open those settings
-     * (the multisite lock and "settings for administrators only" included).
+     * "Customize" in the header's "More actions", with Export Excel: opens
+     * the "Dashboard sections" list in Settings. Only for someone who can
+     * open those settings (the multisite lock and "settings for
+     * administrators only" included). It sat at the end of the date line
+     * until 3.3.49.
      *
      * @return void
      */
@@ -881,10 +887,12 @@ class Brikpanel_Dashboard {
             admin_url( 'admin.php' )
         ) . '#bp-jump-brikpanel-dashboard-section-order';
         ?>
-                <a class="brikpanel-btn brikpanel-btn--link brikpanel-dash-customize" href="<?php echo esc_url( $url ); ?>">
-                    <svg class="brikpanel-dash-customize-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
-                    <span><?php echo esc_html_x( 'Customize', 'link on the dashboard date line to the dashboard layout settings', 'brikpanel' ); ?></span>
-                </a>
+                                <a class="brikpanel-dash-customize" href="<?php echo esc_url( $url ); ?>">
+                                    <span class="brikpanel-dash-customize-icon" aria-hidden="true">
+                                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg>
+                                    </span>
+                                    <span class="brikpanel-dash-customize-label"><?php echo esc_html_x( 'Customize', 'link on the dashboard date line to the dashboard layout settings', 'brikpanel' ); ?></span>
+                                </a>
         <?php
     }
 
@@ -910,24 +918,34 @@ class Brikpanel_Dashboard {
             <?php
             // The header gives way in its own order, measured
             // (front-end/shared/brikpanel-fit-row.js, CLAUDE.md "Başlık satırı
-            // kuralı"): one line while it fits; then the ad platforms link and
-            // Export Excel fold into "More actions"; then the date buttons take
-            // their own row, then an even 3 x 2 grid; then the buttons go under
-            // the title; Copy everything's label goes to its icon last. On a
-            // phone the buttons stacked at uneven widths and the date buttons
-            // wrapped ragged (field test C6).
+            // kuralı"): one line while it fits; then the date buttons and the
+            // date button take their own row, then the date buttons an even
+            // 3 x 2 grid with the date button across the width under it; then
+            // the buttons go under the title; Copy everything's label goes to
+            // its icon last. On a phone the buttons stacked at uneven widths
+            // and the date buttons wrapped ragged (field test C6).
+            // The ad platforms link, Export Excel and Customize are in "More
+            // actions" at every width since 3.3.50, for a quieter header: on a
+            // wide screen they made one long row of eleven controls. Until
+            // then they sat in the row while it had room.
+            // `is-fold` is printed too, so the header looks the same before
+            // the helper runs or without it.
             // Only the title's own text is checked for "one line": with
             // BrikMarket on, "With marketplace" is a second line under it by
-            // design, and checking the whole <h1> counted that as a broken
+            // design, and checking the whole heading counted that as a broken
             // title, so every level failed and the header took its phone form
             // at any width (3.3.24 to 3.3.27).
+            // Up to 3.3.49 the window shown ("Custom range · Nov 1, 2026 to
+            // Nov 13, 2026 · 13 days") had a line of its own under the header,
+            // with the custom range field floating over its end (and over
+            // Customize). The date button now writes the window and opens the
+            // calendar; "About these numbers" sits beside the title.
             $bp_dash_header_fit = [
                 'title'  => 'h1 > .brikpanel-dash-title-text',
                 'lines'  => [ '' ],
                 'levels' => [
-                    '',
                     'is-fold',
-                    [ 'cls' => 'is-fold is-two-rows', 'lines' => [ '.brikpanel-dash-header-main', '.brikpanel-dash-presets' ] ],
+                    [ 'cls' => 'is-fold is-two-rows', 'lines' => [ '.brikpanel-dash-header-main', '.brikpanel-dash-range-wrap' ] ],
                     [ 'cls' => 'is-fold is-two-rows is-preset-grid', 'lines' => [ '.brikpanel-dash-header-main' ] ],
                     [ 'cls' => 'is-fold is-two-rows is-preset-grid is-stacked-main', 'lines' => [ '.brikpanel-dash-actions' ] ],
                     [ 'cls' => 'is-fold is-two-rows is-preset-grid is-stacked-main is-icon-copy', 'lines' => [ '.brikpanel-dash-actions' ] ],
@@ -935,18 +953,21 @@ class Brikpanel_Dashboard {
             ];
             ?>
             <!-- Header -->
-            <div class="brikpanel-dash-header" id="brikpanel-dash-header" data-bp-fit-row="<?php echo esc_attr( wp_json_encode( $bp_dash_header_fit ) ); ?>">
+            <div class="brikpanel-dash-header is-fold" id="brikpanel-dash-header" data-bp-fit-row="<?php echo esc_attr( wp_json_encode( $bp_dash_header_fit ) ); ?>">
                 <?php
                 // Fit as soon as the header opens (the helper is printed in <head>).
                 wp_print_inline_script_tag( 'if(window.brikpanelFitRow){window.brikpanelFitRow.auto(document.getElementById("brikpanel-dash-header"));}' );
                 ?>
                 <div class="brikpanel-dash-header-main">
-                    <h1>
-                        <span class="brikpanel-dash-title-text"><?php esc_html_e( 'Dashboard', 'brikpanel' ); ?></span>
+                    <div class="brikpanel-dash-heading">
+                        <div class="brikpanel-dash-heading-line">
+                            <h1><span class="brikpanel-dash-title-text"><?php esc_html_e( 'Dashboard', 'brikpanel' ); ?></span></h1>
+                            <?php $this->render_scope_hint(); ?>
+                        </div>
                         <?php if ( function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active() ) : ?>
                             <span class="brikpanel-dash-header-suffix"><?php esc_html_e( 'With marketplace', 'brikpanel' ); ?></span>
                         <?php endif; ?>
-                    </h1>
+                    </div>
                     <div class="brikpanel-dash-actions">
                         <div class="brikpanel-dash-copy-wrap">
                             <button type="button" class="brikpanel-dash-copy-summary" id="brikpanel-copy-summary">
@@ -1005,6 +1026,7 @@ class Brikpanel_Dashboard {
                                     </span>
                                     <span class="brikpanel-dash-export-label" data-bp-fit-labels="<?php echo esc_attr( wp_json_encode( [ __( 'Export Excel', 'brikpanel' ), __( 'Preparing…', 'brikpanel' ) ] ) ); ?>"><?php esc_html_e( 'Export Excel', 'brikpanel' ); ?></span>
                                 </button>
+                                <?php $this->render_customize_link(); ?>
                                 <?php
                                 // "Keep screen on": phones only, in the folded menu.
                                 // front-end/dashboard/brikpanel-wake-lock.js shows it
@@ -1024,10 +1046,11 @@ class Brikpanel_Dashboard {
                     </div>
                 </div>
                 <?php
-                // The remembered range decides which preset renders active,
+                // The remembered range decides which button renders active,
                 // so the button state matches the data on first paint —
                 // marking "Today" here and correcting it from JS would flash
-                // the wrong selection on every load.
+                // the wrong selection on every load. A custom range lights the
+                // date button itself.
                 $bp_saved_range = self::get_range_preference();
                 $bp_presets     = [
                     'today'     => __( 'Today', 'brikpanel' ),
@@ -1035,29 +1058,63 @@ class Brikpanel_Dashboard {
                     '7days'     => __( 'Last 7 days', 'brikpanel' ),
                     '30days'    => __( 'Last 30 days', 'brikpanel' ),
                     '90days'    => __( 'Last 90 days', 'brikpanel' ),
-                    'custom'    => __( 'Custom', 'brikpanel' ),
+                    'mtd'       => __( 'Month to date', 'brikpanel' ),
                 ];
+                // Every preset's window, so a click writes its dates on the
+                // date button at once, before the data arrives (the answer
+                // writes them again, past midnight included). Date math only.
+                $bp_windows = [];
+                foreach ( array_keys( $bp_presets ) as $bp_key ) {
+                    $bp_windows[ $bp_key ] = $this->calculate_dates( $bp_key )['period'];
+                }
+                $bp_custom = 'custom' === $bp_saved_range['range'];
+                $bp_period = $bp_custom
+                    ? $this->calculate_dates( 'custom', $bp_saved_range['start'], $bp_saved_range['end'] )['period']
+                    : $bp_windows[ $bp_saved_range['range'] ];
+                // The header is measured with the longest text the date button
+                // shows for a preset or the range on screen, so a click on a
+                // preset never moves it to another layout. A longer custom
+                // range (over two years) can, once the calendar has closed.
+                $bp_dates_fit = array_values( array_unique( array_merge(
+                    wp_list_pluck( $bp_windows, 'short' ),
+                    [ $bp_period['short'] ]
+                ) ) );
                 ?>
                 <div class="brikpanel-dash-range-wrap">
-                    <div class="brikpanel-dash-presets">
+                    <div class="brikpanel-dash-presets" role="group" aria-label="<?php esc_attr_e( 'Date range', 'brikpanel' ); ?>">
                         <?php foreach ( $bp_presets as $bp_key => $bp_label ) : ?>
-                            <button class="brikpanel-dash-preset<?php echo ( $bp_saved_range['range'] === $bp_key ) ? ' active' : ''; ?>" data-range="<?php echo esc_attr( $bp_key ); ?>"><?php echo esc_html( $bp_label ); ?></button>
+                            <?php $bp_on = ( $bp_saved_range['range'] === $bp_key ); ?>
+                            <button type="button" class="brikpanel-dash-preset<?php echo $bp_on ? ' active' : ''; ?>" data-range="<?php echo esc_attr( $bp_key ); ?>" data-bp-dates="<?php echo esc_attr( $bp_windows[ $bp_key ]['short'] ); ?>" title="<?php echo esc_attr( $bp_windows[ $bp_key ]['text'] ); ?>" aria-pressed="<?php echo $bp_on ? 'true' : 'false'; ?>"><?php echo esc_html( $bp_label ); ?></button>
                         <?php endforeach; ?>
                     </div>
-                    <div class="brikpanel-dash-custom-range"<?php echo ( 'custom' === $bp_saved_range['range'] ) ? '' : ' style="display:none;"'; ?>>
-                        <input type="text" id="brikpanel-dash-datepicker" placeholder="<?php esc_attr_e( 'Select dates', 'brikpanel' ); ?>" readonly>
-                    </div>
+                    <?php
+                    // The button is as wide as the longest preset window
+                    // (the hidden copies under its text): its text changes
+                    // with every click, and the date buttons beside it must
+                    // not move under the pointer.
+                    ?>
+                    <button type="button" class="brikpanel-dash-picker<?php echo $bp_custom ? ' active' : ''; ?>" id="brikpanel-dash-picker" title="<?php echo esc_attr( $bp_period['text'] ); ?>" aria-haspopup="dialog" aria-expanded="false" aria-pressed="<?php echo $bp_custom ? 'true' : 'false'; ?>">
+                        <span class="screen-reader-text"><?php esc_html_e( 'Choose dates', 'brikpanel' ); ?></span>
+                        <span class="brikpanel-dash-picker-face">
+                            <span class="brikpanel-dash-picker-now">
+                                <svg class="brikpanel-dash-picker-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
+                                <span class="brikpanel-dash-picker-dates" data-bp-fit-labels="<?php echo esc_attr( wp_json_encode( $bp_dates_fit ) ); ?>"><?php echo esc_html( $bp_period['short'] ); ?></span>
+                            </span>
+                            <?php foreach ( array_unique( wp_list_pluck( $bp_windows, 'short' ) ) as $bp_size ) : ?>
+                                <span class="brikpanel-dash-picker-size" aria-hidden="true"><span class="brikpanel-dash-picker-size-icon"></span><?php echo esc_html( $bp_size ); ?></span>
+                            <?php endforeach; ?>
+                        </span>
+                    </button>
                 </div>
             </div>
-
-            <div class="brikpanel-dash-period" id="brikpanel-dash-period" aria-live="polite">
-                <span class="brikpanel-dash-period-icon" aria-hidden="true">
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>
-                </span>
-                <span class="brikpanel-dash-period-text"><?php esc_html_e( 'Loading…', 'brikpanel' ); ?></span>
-                <?php $this->render_scope_hint(); ?>
-                <?php $this->render_customize_link(); ?>
-            </div>
+            <?php
+            // The calendar's field (flatpickr keeps the picked range in it)
+            // and the line that tells screen readers which window is shown.
+            // Both out of the header: neither is seen, and the header measures
+            // only what it shows.
+            ?>
+            <input type="text" id="brikpanel-dash-datepicker" class="brikpanel-dash-picker-input" hidden tabindex="-1" aria-hidden="true">
+            <span class="screen-reader-text" id="brikpanel-dash-period" aria-live="polite"></span>
             <?php brikpanel_header_end(); ?>
 
             <?php $this->render_new_store_guide( isset( $visible['profit'] ) ); ?>
@@ -1083,26 +1140,6 @@ class Brikpanel_Dashboard {
              * @since 3.1.28
              */
             do_action( 'brikpanel_dashboard_after_sections' );
-
-            // Visitor countries come from DB-IP's free list (CC BY 4.0), whose
-            // licence asks for a link on the pages that show them: one quiet
-            // line at the very bottom, while the cards that show countries do.
-            if ( ( isset( $visible['locations'] ) || isset( $visible['live'] ) )
-                && function_exists( 'brikpanel_frontend_tracking_enabled' ) && brikpanel_frontend_tracking_enabled() ) :
-                ?>
-                <p class="brikpanel-dash-credit">
-                    <?php
-                    // DB-IP's own wording for the credit, kept in the link.
-                    $credit_link = '<a href="' . esc_url( 'https://db-ip.com' ) . '" target="_blank" rel="noopener">' . esc_html__( 'IP Geolocation by DB-IP', 'brikpanel' ) . '</a>';
-                    printf(
-                        /* translators: %s: the link "IP Geolocation by DB-IP" to db-ip.com, where the visitor country list comes from. */
-                        esc_html__( 'Visitor countries: %s', 'brikpanel' ),
-                        $credit_link // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- built above from esc_url() and esc_html__().
-                    );
-                    ?>
-                </p>
-                <?php
-            endif;
             ?>
 
         </div>
@@ -1402,6 +1439,47 @@ class Brikpanel_Dashboard {
                 'next'     => $offset + self::PAGES_PER_LOAD,
             ]
         );
+    }
+
+    /**
+     * AJAX: one country's region map block for the Locations card, asked for
+     * when someone opens that country's map (the "<country> map" button, a
+     * row of the country list, the country menu). The store's single country
+     * comes with the dashboard data instead. Only the countries with a map
+     * (Brikpanel_Dashboard_Regions::countries()); the period is checked like
+     * the dashboard's own request.
+     */
+    public function ajax_regions() {
+        if ( ! check_ajax_referer( 'brikpanel_dashboard_nonce', 'security', false ) ) {
+            wp_send_json_error( [ 'message' => 'Invalid nonce.' ], 403 );
+        }
+        if ( ! current_user_can( 'manage_woocommerce' ) ) {
+            wp_send_json_error( [ 'message' => 'Unauthorized.' ], 403 );
+        }
+        $regions = $this->regions();
+        $cc      = isset( $_POST['cc'] ) && is_string( $_POST['cc'] ) ? strtoupper( sanitize_key( wp_unslash( $_POST['cc'] ) ) ) : '';
+        if ( ! preg_match( '/^[A-Z]{2}$/', $cc ) || ! isset( $regions::countries()[ $cc ] ) ) {
+            wp_send_json_error( [ 'message' => 'Unknown country.' ], 400 );
+        }
+        $range = $this->request_range( $_POST ); // phpcs:ignore WordPress.Security.NonceVerification.Missing -- nonce checked above.
+        $dates = $this->calculate_dates( $range['range'], $range['start'], $range['end'] );
+        $exclude_mp = function_exists( 'brikpanel_brikmarket_active' ) && brikpanel_brikmarket_active();
+
+        // Kept like the dashboard data: the shared data version moves with
+        // every order, the window and the language (region names) are in the
+        // key, and so is the map data's version.
+        $range_key = 'custom' === $range['range'] ? 'custom_' . $range['start'] . '_' . $range['end'] : $range['range'] . '_' . $dates['start_local'];
+        $locale    = sanitize_key( function_exists( 'determine_locale' ) ? determine_locale() : get_locale() );
+        $cache_key = 'bp_dash_rg1_' . brikpanel_data_cache_ver() . '_' . $range_key . '_' . $cc . '_mp' . ( $exclude_mp ? 1 : 0 ) . '_' . $locale . '_' . str_replace( '.', '', $regions::version() ) . ( $this->is_hpos() ? '_h' : '_p' );
+        $block     = get_transient( $cache_key );
+        if ( false === $block ) {
+            $block = $this->region_block( $cc, $dates['start_gmt'], $dates['end_gmt'], $exclude_mp );
+            if ( null === $block ) {
+                wp_send_json_error( [ 'message' => 'No map for this country.' ], 404 );
+            }
+            set_transient( $cache_key, $block, function_exists( 'brikpanel_cache_ttl' ) ? brikpanel_cache_ttl( self::CACHE_TTL ) : self::CACHE_TTL );
+        }
+        wp_send_json_success( $block );
     }
 
     // =========================================================================
@@ -1764,7 +1842,7 @@ class Brikpanel_Dashboard {
     }
 
     /**
-     * Master "about these numbers" tooltip shown under the header. Explains the
+     * Master "about these numbers" tooltip beside the page title. Explains the
      * two data sources (full order history vs tracking-from-activation) and the
      * deliberate exclusion of admin-placed orders, so store owners understand
      * why a test order of their own does not move the totals.
@@ -2140,70 +2218,77 @@ class Brikpanel_Dashboard {
         <?php
     }
 
+    /**
+     * Marketplaces (BrikMarket): one row of two cards, filled by
+     * renderMarketplace() in brikpanel-dashboard.js. The first sums the
+     * period's marketplace sales (sales, orders, average order and their
+     * change), draws them day by day (hour by hour on a one-day period: the
+     * sales chart counts website orders only) and shows in one ring where the
+     * period's sales came from: the store's own website and each marketplace,
+     * with the share and the money of each beside it. The second lists what
+     * sold best there by sales, products or categories (the tab this user
+     * opened last).
+     *
+     * Up to 3.3.52 this was four figure cards, a card per marketplace, a share
+     * ring and two tables, three rows in all. Nearly every store sells on one
+     * marketplace (Salih, 16 Nov 2026), where the ring was a full circle and
+     * the marketplace's card repeated the figures above it.
+     *
+     * @return void
+     */
     public function render_section_marketplace_analytics() {
         if ( ! function_exists( 'brikpanel_brikmarket_active' ) || ! brikpanel_brikmarket_active() ) {
             return;
         }
+        $figures   = [
+            'sales'  => [ __( 'Sales', 'brikpanel' ), 'card-mp-sales', 'delta-mp-sales' ],
+            'orders' => [ __( 'Orders', 'brikpanel' ), 'card-mp-orders', 'delta-mp-orders' ],
+            'aov'    => [ __( 'Avg. order value', 'brikpanel' ), 'card-mp-aov', 'delta-mp-aov' ],
+        ];
+        $top_title = __( 'Best sellers on marketplaces', 'brikpanel' );
+        $panels    = [
+            'products'   => [ __( 'Products', 'brikpanel' ), wp_unique_id( 'bp-dv-mp-products-' ) ],
+            'categories' => [ __( 'Categories', 'brikpanel' ), wp_unique_id( 'bp-dv-mp-categories-' ) ],
+        ];
+        $selected  = self::tab_for( 'mp', array_keys( $panels ), 'products' );
         ?>
-            <!-- Marketplace Analytics (BrikMarket) -->
-            <div class="brikpanel-dash-marketplace" id="brikpanel-marketplace-section" data-empty="0">
-                <!-- Marketplace KPI cards -->
-                <div class="brikpanel-dash-cards brikpanel-dash-mp-cards">
-                    <div class="brikpanel-dash-card">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Marketplace sales', 'brikpanel' ); ?></span>
-                        <span class="brikpanel-dash-card-value" id="card-mp-sales">--</span>
-                        <span class="brikpanel-dash-card-delta" id="delta-mp-sales"></span>
+            <section class="bp-dv-row bp-dv-row--11 bp-dv-mp-row" id="brikpanel-marketplace-section">
+                <article class="bp-dv-card bp-dv-mp" data-bp-dv="mp" aria-labelledby="bp-dv-mp-title">
+                    <div class="bp-dv-card-h">
+                        <h2 class="bp-dv-title" id="bp-dv-mp-title"><?php echo esc_html_x( 'Marketplaces', 'dashboard card title: sales from the marketplaces BrikMarket connects', 'brikpanel' ); ?></h2>
+                        <?php // The marketplace's name while the period has one, the script writes it. ?>
+                        <div class="bp-dv-aside bp-dv-mp-one" data-bp-dv-slot="one"></div>
                     </div>
-                    <div class="brikpanel-dash-card">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Marketplace orders', 'brikpanel' ); ?></span>
-                        <span class="brikpanel-dash-card-value" id="card-mp-orders">--</span>
-                        <span class="brikpanel-dash-card-delta" id="delta-mp-orders"></span>
-                    </div>
-                    <div class="brikpanel-dash-card">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Avg. marketplace order', 'brikpanel' ); ?></span>
-                        <span class="brikpanel-dash-card-value" id="card-mp-aov">--</span>
-                        <span class="brikpanel-dash-card-delta" id="delta-mp-aov"></span>
-                    </div>
-                    <div class="brikpanel-dash-card">
-                        <span class="brikpanel-dash-card-label"><?php esc_html_e( 'Share of total revenue', 'brikpanel' ); ?></span>
-                        <span class="brikpanel-dash-card-value" id="card-mp-share">--</span>
-                        <span class="brikpanel-dash-card-delta brikpanel-dash-card-delta-static" id="delta-mp-share"></span>
-                    </div>
-                </div>
-
-                <!-- Per-marketplace breakdown -->
-                <div class="brikpanel-dash-row brikpanel-dash-row-1-1">
-                    <div class="brikpanel-dash-panel">
-                        <h2><?php esc_html_e( 'Revenue by marketplace', 'brikpanel' ); ?></h2>
-                        <div class="brikpanel-dash-mp-list" id="brikpanel-mp-list">
-                            <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
+                    <div class="bp-dv-card-body bp-dv-mp-body">
+                        <div class="bp-dv-mp-figs" data-bp-tiles>
+                            <?php foreach ( $figures as $metric => $figure ) : ?>
+                                <div class="bp-dv-mp-fig" data-metric="mp_<?php echo esc_attr( $metric ); ?>">
+                                    <span class="bp-dv-mp-label"><?php echo esc_html( $figure[0] ); ?></span>
+                                    <span class="brikpanel-dash-card-value bp-dv-mp-value" id="<?php echo esc_attr( $figure[1] ); ?>">--</span>
+                                    <span class="brikpanel-dash-card-delta" id="<?php echo esc_attr( $figure[2] ); ?>"></span>
+                                </div>
+                            <?php endforeach; ?>
+                        </div>
+                        <?php // Marketplace sales day by day (hour by hour on one day): the sales chart counts website orders only. ?>
+                        <div class="bp-dv-mp-cols" data-bp-dv-slot="cols" tabindex="0" role="group" hidden></div>
+                        <span class="screen-reader-text" aria-live="polite" data-bp-dv-slot="cols-live"></span>
+                        <?php // Where the period's sales came from: the website and each marketplace, one ring (Salih, 16 Nov 2026). ?>
+                        <div class="bp-dv-mp-mix" data-bp-dv-slot="mix">
+                            <p class="bp-dv-lead" hidden><?php esc_html_e( 'Where your sales came from', 'brikpanel' ); ?></p>
+                            <div class="bp-dv-mp-mix-box" data-bp-dv-slot="mixbox"></div>
                         </div>
                     </div>
-                    <div class="brikpanel-dash-panel">
-                        <h2><?php esc_html_e( 'Marketplace share', 'brikpanel' ); ?></h2>
-                        <div class="brikpanel-dash-chart-wrap brikpanel-dash-chart-short">
-                            <canvas id="brikpanel-mp-share-chart"></canvas>
-                        </div>
-                        <p class="brikpanel-dash-empty brikpanel-dash-chart-empty" hidden></p>
+                </article>
+                <article class="bp-dv-card bp-dv-mp-top" data-bp-dv="mp-top" aria-labelledby="bp-dv-mp-top-title">
+                    <div class="bp-dv-card-h">
+                        <h2 class="bp-dv-title" id="bp-dv-mp-top-title"><?php echo esc_html( $top_title ); ?></h2>
+                        <div class="bp-dv-aside"><?php $this->tab_row( $top_title, $panels, $selected ); ?></div>
                     </div>
-                </div>
-
-                <!-- Top categories + per-marketplace categories -->
-                <div class="brikpanel-dash-row brikpanel-dash-row-1-1">
-                    <div class="brikpanel-dash-panel">
-                        <h2><?php esc_html_e( 'Top categories from marketplaces', 'brikpanel' ); ?></h2>
-                        <div class="brikpanel-dash-table-wrap" id="brikpanel-mp-categories">
-                            <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
-                        </div>
-                    </div>
-                    <div class="brikpanel-dash-panel">
-                        <h2><?php esc_html_e( 'Top marketplace products', 'brikpanel' ); ?></h2>
-                        <div class="brikpanel-dash-table-wrap" id="brikpanel-mp-products">
-                            <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
-                        </div>
-                    </div>
-                </div>
-            </div>
+                    <?php foreach ( $panels as $view => $panel ) : ?>
+                        <div class="bp-dv-panel bp-dv-list-body" id="<?php echo esc_attr( $panel[1] ); ?>" data-bp-dv-view="<?php echo esc_attr( $view ); ?>" role="tabpanel"<?php echo $view !== $selected ? ' hidden' : ''; ?>></div>
+                    <?php endforeach; ?>
+                </article>
+            </section>
         <?php
     }
 
@@ -2302,8 +2387,27 @@ class Brikpanel_Dashboard {
                         </div>
                     </div>
                     <div class="bp-dv-live-body" id="live-visitors-list" data-bp-dv-slot="body"></div>
+                    <?php $this->render_ip_credit( 'bp-dv-live-credit' ); ?>
                     <span class="screen-reader-text" aria-live="polite" data-bp-dv-slot="hours-live"></span>
                 </article>
+        <?php
+    }
+
+    /**
+     * The link DB-IP's free country list asks for on the pages that show its
+     * countries (CC BY 4.0, "IP Geolocation by DB-IP"). It is printed hidden
+     * in the two cards that show visitor countries, and the dashboard script
+     * shows it only while one of them has a country from that list on screen:
+     * the Locations card's Visitors tab and a Live row with a flag. Up to
+     * 3.3.50 a single line closed the dashboard instead, far from the data.
+     *
+     * @since 3.3.51
+     *
+     * @param string $class_name The link's class.
+     */
+    private function render_ip_credit( $class_name ) {
+        ?>
+                    <a class="<?php echo esc_attr( $class_name ); ?>" href="<?php echo esc_url( 'https://db-ip.com' ); ?>" target="_blank" rel="noopener" hidden><?php esc_html_e( 'IP Geolocation by DB-IP', 'brikpanel' ); ?></a>
         <?php
     }
 
@@ -2354,7 +2458,13 @@ class Brikpanel_Dashboard {
         $loc_pref  = self::get_tab_preferences()['locations'] ?? '';
         $loc_mode  = '' !== $focus_cc ? ( '' !== $loc_pref ? $loc_pref : 'region' ) : 'world';
         $countries = WC()->countries->get_countries();
-        $focus_lbl = '' !== $focus_cc && isset( $countries[ $focus_cc ] ) ? brikpanel_plain_name( $countries[ $focus_cc ] ) : '';
+        $focus_lbl = '' !== $focus_cc && isset( $countries[ $focus_cc ] ) ? self::loc_short_country( brikpanel_plain_name( $countries[ $focus_cc ] ) ) : '';
+        // On the globe the button reads "<country> map" (the script writes the
+        // same once the figures are in, syncLocHead()).
+        if ( '' !== $focus_lbl && 'world' === $loc_mode ) {
+            /* translators: %s: a country's name, e.g. "Türkiye" or "US". The button opens that country's region map. */
+            $focus_lbl = sprintf( _x( '%s map', 'Locations card button: the region map of a country', 'brikpanel' ), $focus_lbl );
+        }
         // Orders, Customers or Visitors: the one this user opened last time
         // (3.3.40). Visitors are always shown on the world globe, so the
         // World | Country switch steps aside there.
@@ -2366,10 +2476,18 @@ class Brikpanel_Dashboard {
         ];
         $visitors  = 'visitors' === $loc_view;
         ?>
-            <!-- Row: Locations globe + tables -->
-            <div class="brikpanel-dash-row brikpanel-dash-row-2-1">
-                <div class="brikpanel-dash-panel brikpanel-dash-globe-panel" id="globe-panel" data-loc-mode="<?php echo esc_attr( $loc_mode ); ?>" data-loc-pref="<?php echo esc_attr( $loc_pref ); ?>" data-loc-view="<?php echo esc_attr( $loc_view ); ?>">
-                    <div class="brikpanel-dash-globe-header">
+            <?php
+            // One card since 3.3.50 (Salih chose "side by side"): the globe or
+            // a country's region map on the left, the countries (or that
+            // country's regions) and cities on the right. Up to 3.3.49 the
+            // globe stood alone in a wide box beside a second panel with the
+            // lists. The map button opens the busiest country that has a map
+            // (brikpanel-dashboard.js, syncLocSwitch()); a row with a map icon
+            // opens its country's; the World button goes back to the globe.
+            ?>
+            <div class="brikpanel-dash-row bp-loc-row">
+                <section class="brikpanel-dash-panel brikpanel-dash-globe-panel bp-loc-card" id="globe-panel" aria-labelledby="globe-panel-title" data-loc-mode="<?php echo esc_attr( $loc_mode ); ?>" data-loc-pref="<?php echo esc_attr( $loc_pref ); ?>" data-loc-view="<?php echo esc_attr( $loc_view ); ?>">
+                    <div class="brikpanel-dash-globe-header bp-loc-head">
                         <div class="brikpanel-dash-globe-title-group">
                             <h2 id="globe-panel-title"><?php echo esc_html_x( 'Locations', 'dashboard card: where orders, customers and visitors come from', 'brikpanel' ); ?></h2>
                             <div class="brikpanel-loc-tabs" role="group" aria-label="<?php esc_attr_e( 'View mode', 'brikpanel' ); ?>">
@@ -2380,38 +2498,65 @@ class Brikpanel_Dashboard {
                                 <?php endforeach; ?>
                             </div>
                         </div>
-                        <?php // The world globe or the country's region map; the data request shows it when the store sells in one country. ?>
+                        <?php // The world globe or a country's region map; never on Visitors (countries only). ?>
                         <div class="brikpanel-loc-mode" role="group" aria-label="<?php echo esc_attr_x( 'Map', 'order locations card: the world globe or the country map', 'brikpanel' ); ?>" data-cc="<?php echo esc_attr( $focus_cc ); ?>"<?php echo ( '' === $focus_cc || $visitors ) ? ' hidden' : ''; ?>>
-                            <button class="brikpanel-loc-mode-btn" data-mode="world" type="button" aria-pressed="<?php echo 'world' === $loc_mode ? 'true' : 'false'; ?>"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2 2.2 2 10.2 0 12.4M8 1.8c-2 2.2-2 10.2 0 12.4"/></svg><?php echo esc_html_x( 'World', 'order locations card: the world globe', 'brikpanel' ); ?></button>
-                            <button class="brikpanel-loc-mode-btn" data-mode="region" type="button" aria-pressed="<?php echo 'region' === $loc_mode ? 'true' : 'false'; ?>"><svg viewBox="0 0 16 16" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><path d="M8 14.2s4.6-4.3 4.6-7.6A4.6 4.6 0 0 0 3.4 6.6c0 3.3 4.6 7.6 4.6 7.6z"/><circle cx="8" cy="6.6" r="1.6"/></svg><span class="brikpanel-loc-mode-country"><?php echo esc_html( $focus_lbl ); ?></span></button>
+                            <button class="brikpanel-loc-mode-btn bp-loc-world" data-mode="world" type="button"<?php echo 'world' === $loc_mode ? ' hidden' : ''; ?>><svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true" focusable="false"><circle cx="8" cy="8" r="6.2"/><path d="M1.8 8h12.4M8 1.8c2 2.2 2 10.2 0 12.4M8 1.8c-2 2.2-2 10.2 0 12.4"/></svg><?php echo esc_html_x( 'World', 'order locations card: the world globe', 'brikpanel' ); ?></button>
+                            <button class="brikpanel-loc-mode-btn bp-loc-open" data-mode="region" type="button" aria-pressed="<?php echo 'region' === $loc_mode ? 'true' : 'false'; ?>"><svg class="bp-loc-open-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg><span class="bp-loc-flag" aria-hidden="true"></span><span class="brikpanel-loc-mode-country"><?php echo esc_html( $focus_lbl ); ?></span><svg class="bp-loc-chev" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m6 9 6 6 6-6"/></svg></button>
+                            <div class="bp-loc-menu" id="bp-loc-menu" role="menu" aria-label="<?php echo esc_attr_x( 'Country maps', 'Locations card: the menu of countries whose map can open', 'brikpanel' ); ?>" hidden></div>
                         </div>
-                        <button class="brikpanel-dash-globe-theme-btn" id="globe-theme-toggle" type="button" title="<?php esc_attr_e( 'Toggle theme', 'brikpanel' ); ?>">
-                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/></svg>
-                        </button>
                     </div>
-                    <div class="brikpanel-dash-globe-wrap" id="globe-container">
-                        <canvas id="brikpanel-globe"></canvas>
+                    <p class="bp-loc-summary" id="bp-loc-summary" hidden><span class="bp-loc-big"></span><span class="bp-loc-sub"></span></p>
+                    <?php // "Loading the map…", then the map's name: for screen readers. ?>
+                    <span class="screen-reader-text" id="bp-loc-live" aria-live="polite"></span>
+                    <div class="bp-loc-body">
+                        <div class="bp-loc-stage">
+                            <div class="brikpanel-dash-globe-wrap" id="globe-container">
+                                <canvas id="brikpanel-globe"></canvas>
+                            </div>
+                            <?php // Beside the globe box, never inside it: the globe writes its size onto that box. ?>
+                            <p class="brikpanel-dash-empty brikpanel-dash-globe-empty" hidden></p>
+                            <div class="brikpanel-loc-foot" hidden>
+                                <span class="brikpanel-loc-unknown"></span>
+                                <span class="brikpanel-loc-legend" aria-hidden="true"><?php echo esc_html_x( 'Less', 'map colour scale: fewer orders', 'brikpanel' ); ?><i></i><i></i><i></i><i></i><i></i><?php echo esc_html_x( 'More', 'map colour scale: more orders', 'brikpanel' ); ?></span>
+                                <?php // In the colour scale's place on the Visitors tab, which has no scale. ?>
+                                <?php $this->render_ip_credit( 'brikpanel-loc-credit' ); ?>
+                            </div>
+                        </div>
+                        <div class="bp-loc-side brikpanel-dash-locations-panel">
+                            <div class="bp-loc-side-head">
+                                <button class="bp-loc-back" type="button" hidden><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="m15 18-6-6 6-6"/></svg><?php echo esc_html_x( 'Countries', 'Locations card: back from a country map to the country list', 'brikpanel' ); ?></button>
+                                <?php // Visitors have no cities: their list is the only one. ?>
+                                <h3 id="loc-panel-countries-title"><?php echo esc_html( $visitors ? __( 'Top countries by visitors', 'brikpanel' ) : __( 'Top countries', 'brikpanel' ) ); ?></h3>
+                            </div>
+                            <div class="brikpanel-dash-table-wrap" id="top-countries-table">
+                                <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
+                            </div>
+                            <h3 class="brikpanel-dash-locations-h2" id="loc-panel-cities-title"<?php echo $visitors ? ' hidden' : ''; ?>><?php esc_html_e( 'Top cities', 'brikpanel' ); ?></h3>
+                            <div class="brikpanel-dash-table-wrap" id="top-cities-table"<?php echo $visitors ? ' hidden' : ''; ?>>
+                                <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
+                            </div>
+                        </div>
                     </div>
-                    <?php // Beside the globe box, never inside it: the globe writes its size onto that box. ?>
-                    <p class="brikpanel-dash-empty brikpanel-dash-globe-empty" hidden></p>
-                    <div class="brikpanel-loc-foot" hidden>
-                        <span class="brikpanel-loc-unknown"></span>
-                        <span class="brikpanel-loc-legend" aria-hidden="true"><?php echo esc_html_x( 'Less', 'map colour scale: fewer orders', 'brikpanel' ); ?><i></i><i></i><i></i><i></i><i></i><?php echo esc_html_x( 'More', 'map colour scale: more orders', 'brikpanel' ); ?></span>
-                    </div>
-                </div>
-                <div class="brikpanel-dash-panel brikpanel-dash-locations-panel">
-                    <?php // Visitors have no cities: their list is the only one. ?>
-                    <h2 id="loc-panel-countries-title"><?php echo esc_html( $visitors ? __( 'Top countries by visitors', 'brikpanel' ) : __( 'Top countries', 'brikpanel' ) ); ?></h2>
-                    <div class="brikpanel-dash-table-wrap" id="top-countries-table">
-                        <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
-                    </div>
-                    <h2 class="brikpanel-dash-locations-h2" id="loc-panel-cities-title"<?php echo $visitors ? ' hidden' : ''; ?>><?php esc_html_e( 'Top cities', 'brikpanel' ); ?></h2>
-                    <div class="brikpanel-dash-table-wrap" id="top-cities-table"<?php echo $visitors ? ' hidden' : ''; ?>>
-                        <p class="brikpanel-dash-empty"><?php esc_html_e( 'Loading...', 'brikpanel' ); ?></p>
-                    </div>
-                </div>
+                </section>
             </div>
         <?php
+    }
+
+    /**
+     * A country's name on the Locations card's button: "United States (US)"
+     * is "United States", a long one gives way to its code ("Amerika Birleşik
+     * Devletleri (ABD)": "ABD"). The rule of locShortName() in
+     * brikpanel-dashboard.js.
+     *
+     * @param string $name Plain country name.
+     * @return string
+     */
+    private static function loc_short_country( $name ) {
+        $name = (string) $name;
+        if ( ! preg_match( '/^(.+?)\s*\((\p{Lu}{2,4})\)$/u', $name, $m ) ) {
+            return $name;
+        }
+        return preg_match_all( '/./us', $m[1] ) > 14 ? $m[2] : $m[1];
     }
 
     private function render_box_recent_orders() {
@@ -4059,11 +4204,13 @@ class Brikpanel_Dashboard {
         // region, and the locations may carry a region map (focus). "g5": the
         // locations carry the visitors' countries (3.3.40). "g6": ad spend in
         // another currency is converted with the Settings > Currency rates and
-        // the copy carries what had no rate (3.3.41).
+        // the copy carries what had no rate (3.3.41). "g7": the marketplace
+        // products and categories are in the store's currency, the products
+        // ordered by sales, and the totals carry the website's sales (3.3.53).
         // The rates themselves join the key: a deleted rate fires no hook, and
         // a copy holding converted spend must not outlive the rate behind it.
         $fx_for_key = function_exists( 'brikpanel_fx_rates_signature' ) ? brikpanel_fx_rates_signature() : '0';
-        $cache_key  = 'bp_dash_g6_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key . '_pf' . $fees_for_key . '_tx' . $tax_for_key . '_fl' . $fields_for_key . '_' . $locale_for_key . '_rf' . $focus_for_key . '_fx' . $fx_for_key;
+        $cache_key  = 'bp_dash_g7_' . $cache_ver . '_' . $range_key . '_mp' . $exclude_mp_for_key . '_sc' . $shipping_for_key . '_pf' . $fees_for_key . '_tx' . $tax_for_key . '_fl' . $fields_for_key . '_' . $locale_for_key . '_rf' . $focus_for_key . '_fx' . $fx_for_key;
         $cached    = get_transient( $cache_key );
         if ( false !== $cached ) {
             wp_send_json_success( $this->with_data_ver( $this->with_tracking_state( $this->with_today( $cached ) ), $cache_ver ) );
@@ -4533,6 +4680,14 @@ class Brikpanel_Dashboard {
                 $days_span   = 90;
                 break;
 
+            // From the first of this month to the end of today. Its previous
+            // period is the same days of the month before (below).
+            case 'mtd':
+                $start_local = wp_date( 'Y-m-01 00:00:00' );
+                $end_local   = wp_date( 'Y-m-d 23:59:59' );
+                $days_span   = (int) wp_date( 'j' );
+                break;
+
             case 'custom':
                 // Explicit args win (export passes them via GET); otherwise
                 // fall back to the AJAX POST body the dashboard JS sends.
@@ -4573,11 +4728,24 @@ class Brikpanel_Dashboard {
         $start_gmt = get_gmt_from_date( $start_local );
         $end_gmt   = get_gmt_from_date( $end_local );
 
-        // Previous period (same span, immediately before)
-        $prev_end_ts     = strtotime( $start_local ) - 1;
-        $prev_start_ts   = $prev_end_ts - ( $days_span * DAY_IN_SECONDS ) + 1;
-        $prev_start_local = gmdate( 'Y-m-d 00:00:00', $prev_start_ts );
-        $prev_end_local   = gmdate( 'Y-m-d 23:59:59', $prev_end_ts );
+        if ( 'mtd' === $range ) {
+            // Month to date is weighed against the same days of the month
+            // before (Nov 1-13 against Oct 1-13), as WooCommerce Analytics
+            // does: ahead of last month or behind. The 13 days right before
+            // would be the end of last month, which says nothing about this
+            // one. A shorter month ends on its last day (Mar 1-31 against
+            // Feb 1-28), so the two windows never overlap.
+            $prev_month       = ( new DateTimeImmutable( substr( $start_local, 0, 10 ), new DateTimeZone( 'UTC' ) ) )->modify( 'first day of previous month' );
+            $prev_days        = min( $days_span, (int) $prev_month->format( 't' ) );
+            $prev_start_local = $prev_month->format( 'Y-m-d 00:00:00' );
+            $prev_end_local   = $prev_month->modify( '+' . ( $prev_days - 1 ) . ' days' )->format( 'Y-m-d 23:59:59' );
+        } else {
+            // Previous period (same span, immediately before)
+            $prev_end_ts      = strtotime( $start_local ) - 1;
+            $prev_start_ts    = $prev_end_ts - ( $days_span * DAY_IN_SECONDS ) + 1;
+            $prev_start_local = gmdate( 'Y-m-d 00:00:00', $prev_start_ts );
+            $prev_end_local   = gmdate( 'Y-m-d 23:59:59', $prev_end_ts );
+        }
         $prev_start_gmt   = get_gmt_from_date( $prev_start_local );
         $prev_end_gmt     = get_gmt_from_date( $prev_end_local );
 
@@ -4609,16 +4777,16 @@ class Brikpanel_Dashboard {
      *
      * Returns the preset label, the localised From/To dates (using the
      * store's own date_format) and the duration in days. Consumed by the
-     * dashboard JS (subtitle under the range presets) and the CSV export
-     * header so the customer always sees *which* dates a report covers and
-     * *how long* a span it is — e.g. "Last 30 Days · May 18 – Jun 17, 2026
-     * · 30 days".
+     * dashboard JS (the date button in the header: `short` is its text, `text`
+     * its tooltip) and the CSV export header so the customer always sees
+     * *which* dates a report covers and *how long* a span it is — e.g.
+     * "Last 30 Days · May 18 – Jun 17, 2026 · 30 days".
      *
-     * @param string $range      today|yesterday|7days|30days|custom
+     * @param string $range      today|yesterday|7days|30days|90days|mtd|custom
      * @param string $start_date Y-m-d (local)
      * @param string $end_date   Y-m-d (local)
      * @param int    $days       Duration in days (inclusive)
-     * @return array{range:string,label:string,from:string,to:string,from_iso:string,to_iso:string,days:int,text:string}
+     * @return array{range:string,label:string,from:string,to:string,from_iso:string,to_iso:string,days:int,text:string,short:string}
      */
     private function build_period_meta( $range, $start_date, $end_date, $days ) {
         $labels = [
@@ -4627,6 +4795,7 @@ class Brikpanel_Dashboard {
             '7days'     => __( 'Last 7 days', 'brikpanel' ),
             '30days'    => __( 'Last 30 days', 'brikpanel' ),
             '90days'    => __( 'Last 90 days', 'brikpanel' ),
+            'mtd'       => __( 'Month to date', 'brikpanel' ),
             'custom'    => __( 'Custom range', 'brikpanel' ),
         ];
         $label   = $labels[ $range ] ?? $labels['custom'];
@@ -4660,7 +4829,30 @@ class Brikpanel_Dashboard {
             // Pre-composed one-liner so the JS doesn't re-implement locale
             // formatting: "Last 30 Days · May 18 – Jun 17, 2026 · 30 days".
             'text'     => $label . ' · ' . $range_str . ' · ' . $days_str,
+            // The date button's text: "Oct 15 to Nov 13".
+            'short'    => self::period_short_label( $start_date, $end_date ),
         ];
+    }
+
+    /**
+     * The window as the date button in the header writes it: day and month
+     * while both days are in the store's current year ("Oct 15 to Nov 13"),
+     * the store's short date with the year otherwise ("Dec 3, 2025 to Nov 13,
+     * 2026"), one day alone for a single day. The dashboard script writes a
+     * range just picked in the calendar the same way (shortRangeLabel()), so
+     * the button reads the same before and after the data arrives.
+     *
+     * @param string $start_date Y-m-d (local).
+     * @param string $end_date   Y-m-d (local).
+     * @return string
+     */
+    private static function period_short_label( $start_date, $end_date ) {
+        $year      = wp_date( 'Y' );
+        $this_year = substr( (string) $start_date, 0, 4 ) === $year && substr( (string) $end_date, 0, 4 ) === $year;
+        $fmt       = $this_year ? brikpanel_day_month_format() : brikpanel_short_date_format();
+        $from      = brikpanel_local_label_date( $start_date, $fmt );
+        $to        = brikpanel_local_label_date( $end_date, $fmt );
+        return $from === $to ? $from : $from . _x( ' to ', 'date range separator', 'brikpanel' ) . $to;
     }
 
     // =========================================================================
@@ -5617,8 +5809,9 @@ class Brikpanel_Dashboard {
      * The sales chart's series: the current period day by day (hour by hour
      * for a single day) with the previous period of the same length under
      * it, daily visitors for the store cards' small lines and, while
-     * BrikMarket is active, revenue from every channel for the Total sales
-     * card (the chart itself counts website orders only, like before).
+     * BrikMarket is active, revenue from every channel ('ra', by the day and
+     * since 3.3.53 by the hour too) for the Total sales card and the
+     * Marketplaces card (the chart itself counts website orders only).
      *
      * @param array $dates      calculate_dates().
      * @param bool  $exclude_mp BrikMarket is active.
@@ -5650,8 +5843,16 @@ class Brikpanel_Dashboard {
         if ( 'hour' === $unit ) {
             $is_today = $first === $today;
             $upto     = $is_today ? (int) $now->format( 'G' ) : 23;
+            // With BrikMarket, every hour also carries all orders' sales
+            // ('ra', as the days do): the Marketplaces card draws the
+            // marketplace part hour by hour, the Total sales line counts it.
+            $all_hours = $exclude_mp ? $this->day_hours( $this->fold_sales_buckets( $this->sales_bucket_rows( $dates['start_gmt'], $dates['end_gmt'], false ), 'hour' ), $first, $upto ) : null;
             foreach ( $this->day_hours( $this->fold_sales_buckets( $cur_rows, 'hour' ), $first, $upto ) as $h => $x ) {
-                $out['cur'][] = null === $x ? null : [ 't' => $first . ' ' . str_pad( (string) $h, 2, '0', STR_PAD_LEFT ) . ':00', 'r' => $x['r'], 'o' => $x['o'] ];
+                $point = null === $x ? null : [ 't' => $first . ' ' . str_pad( (string) $h, 2, '0', STR_PAD_LEFT ) . ':00', 'r' => $x['r'], 'o' => $x['o'] ];
+                if ( null !== $point && null !== $all_hours ) {
+                    $point['ra'] = isset( $all_hours[ $h ]['r'] ) ? $all_hours[ $h ]['r'] : $point['r'];
+                }
+                $out['cur'][] = $point;
             }
             if ( $with_prev ) {
                 $prev_day = (string) $prev['start_local'];
@@ -6195,7 +6396,23 @@ class Brikpanel_Dashboard {
     private function region_focus_block( $start_gmt, $end_gmt, $exclude_marketplace ) {
         $regions = $this->regions();
         $cc      = $regions::focus_country( $this->is_hpos(), (bool) $exclude_marketplace );
-        $data    = '' !== $cc ? $regions::data( $cc ) : null;
+        return '' !== $cc ? $this->region_block( $cc, $start_gmt, $end_gmt, $exclude_marketplace ) : null;
+    }
+
+    /**
+     * One country's region map block (3.3.50: any of the countries with a map,
+     * for the Locations card's "<country> map" button and its country list;
+     * until then only the store's single country had one).
+     *
+     * @param string $cc                  Country code with a map (Brikpanel_Dashboard_Regions::countries()).
+     * @param string $start_gmt           From (UTC).
+     * @param string $end_gmt             To (UTC).
+     * @param bool   $exclude_marketplace Leave out marketplace orders, like the card.
+     * @return array|null Null when the country has no map.
+     */
+    private function region_block( $cc, $start_gmt, $end_gmt, $exclude_marketplace ) {
+        $regions = $this->regions();
+        $data    = $regions::data( $cc );
         if ( ! $data ) {
             return null;
         }
@@ -6242,6 +6459,90 @@ class Brikpanel_Dashboard {
     // `_brksoft_marketplace`) and wp_wc_order_product_lookup. The legacy
     // path uses wp_posts + wp_postmeta and wp_woocommerce_order_items.
     // =========================================================================
+
+    /**
+     * Every marketplace this store has ever sold on (the BrikMarket order
+     * marker), kept for 12 hours. Read from the marker's index, a few
+     * milliseconds even on a large store.
+     *
+     * @return string[] Marketplace ids.
+     */
+    private function mp_store_ids() {
+        $cached = get_transient( 'brikpanel_mp_store_ids' );
+        if ( is_array( $cached ) ) {
+            return $cached;
+        }
+        global $wpdb;
+        $meta_key = brikpanel_marketplace_meta_key();
+        $ids      = $this->is_hpos()
+            ? $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT meta_value FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key = %s AND meta_value <> '' LIMIT 50", $meta_key ) )
+            : $wpdb->get_col( $wpdb->prepare( "SELECT DISTINCT meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s AND meta_value <> '' LIMIT 50", $meta_key ) );
+        $ids = array_values( array_unique( array_map( 'strval', (array) $ids ) ) );
+        set_transient( 'brikpanel_mp_store_ids', $ids, function_exists( 'brikpanel_cache_ttl' ) ? brikpanel_cache_ttl( 12 * HOUR_IN_SECONDS ) : 12 * HOUR_IN_SECONDS );
+        return $ids;
+    }
+
+    /**
+     * The colour each marketplace takes in the Marketplaces card's ring
+     * (3.3.53): its brand colour, unless that is too close to the website's
+     * dark grey or to a marketplace before it (Amazon, Trendyol and
+     * Hepsiburada are all orange), then a lighter, else a darker, tone of it.
+     * Worked out over every marketplace the store has sold on, in the
+     * palette's fixed order, so a marketplace keeps its colour whichever
+     * period is on screen, and a store on one marketplace sees its brand
+     * colour.
+     *
+     * @param string[] $period_ids Marketplaces of the period on screen (one
+     *                             the 12-hour list does not know yet is added).
+     * @return array<string,string> Marketplace id => #rrggbb.
+     */
+    private function mp_tones( array $period_ids ) {
+        $ids   = array_values( array_unique( array_merge( $this->mp_store_ids(), array_map( 'strval', $period_ids ) ) ) );
+        $order = array_keys( brikpanel_marketplace_palette() );
+        usort(
+            $ids,
+            function ( $a, $b ) use ( $order ) {
+                $ia = array_search( $a, $order, true );
+                $ib = array_search( $b, $order, true );
+                $ia = false === $ia ? PHP_INT_MAX : $ia;
+                $ib = false === $ib ? PHP_INT_MAX : $ib;
+                return $ia === $ib ? strcmp( $a, $b ) : $ia <=> $ib;
+            }
+        );
+        $used  = [ [ 48, 48, 48 ] ]; // The website, #303030.
+        $tones = [];
+        foreach ( $ids as $id ) {
+            $meta = brikpanel_marketplace_meta( $id );
+            $hex  = preg_match( '/^#([0-9a-f]{3}|[0-9a-f]{6})$/i', (string) $meta['color'] ) ? substr( (string) $meta['color'], 1 ) : '8a8a8a';
+            if ( 3 === strlen( $hex ) ) {
+                $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
+            }
+            $base = [ hexdec( substr( $hex, 0, 2 ) ), hexdec( substr( $hex, 2, 2 ) ), hexdec( substr( $hex, 4, 2 ) ) ];
+            $pick = $base;
+            foreach ( [ 0, 0.45, -0.35, 0.7, -0.6 ] as $k ) {
+                $c = array_map(
+                    function ( $v ) use ( $k ) {
+                        return $k >= 0 ? $v + ( 255 - $v ) * $k : $v * ( 1 + $k );
+                    },
+                    $base
+                );
+                $far = true;
+                foreach ( $used as $u ) {
+                    if ( sqrt( ( $u[0] - $c[0] ) ** 2 + ( $u[1] - $c[1] ) ** 2 + ( $u[2] - $c[2] ) ** 2 ) < 70 ) {
+                        $far = false;
+                        break;
+                    }
+                }
+                if ( $far ) {
+                    $pick = $c;
+                    break;
+                }
+            }
+            $used[]       = $pick;
+            $tones[ $id ] = sprintf( '#%02x%02x%02x', (int) round( $pick[0] ), (int) round( $pick[1] ), (int) round( $pick[2] ) );
+        }
+        return $tones;
+    }
 
     private function get_marketplace_analytics( $start_gmt, $end_gmt, $prev_start_gmt, $prev_end_gmt, $site_revenue ) {
         global $wpdb;
@@ -6303,7 +6604,16 @@ class Brikpanel_Dashboard {
         // 3) Marketplace top products (top 5 across all marketplaces).
         $top_products = $this->mp_top_products( $start_gmt, $end_gmt, $is_hpos, $include_statuses, $status_placeholders, $meta_key );
 
-        // 4) Build per-marketplace payload sorted by revenue desc.
+        // 4) Build per-marketplace payload sorted by revenue desc. Each
+        //    marketplace's ring colour stays the same from period to period.
+        $tones          = $this->mp_tones(
+            array_map(
+                function ( $r ) {
+                    return (string) $r->marketplace_id;
+                },
+                $rows_current
+            )
+        );
         $by_marketplace = [];
         foreach ( $rows_current as $r ) {
             $mp_id   = (string) $r->marketplace_id;
@@ -6332,6 +6642,8 @@ class Brikpanel_Dashboard {
                 'id'             => $mp_id,
                 'label'          => $meta['label'],
                 'color'          => $meta['color'],
+                // The colour in the Marketplaces card's ring (3.3.53).
+                'tone'           => isset( $tones[ $mp_id ] ) ? $tones[ $mp_id ] : $meta['color'],
                 'logo'           => $meta['logo'] ?? '',
                 'orders'         => $orders,
                 'revenue'        => $rev,
@@ -6387,6 +6699,8 @@ class Brikpanel_Dashboard {
                 'aov_html'         => wc_price( $aov_current ),
                 'share_total_pct'  => $share_of_total_pct,
                 'site_revenue'          => (float) $site_revenue,
+                // The website's part of the Marketplaces card's ring (3.3.53).
+                'site_revenue_html'     => wc_price( (float) $site_revenue ),
                 'combined_revenue'      => $combined_revenue,
                 'combined_revenue_html' => $combined_revenue_html,
             ],
@@ -6507,6 +6821,38 @@ class Brikpanel_Dashboard {
     }
 
     /**
+     * The rate that turns an amount of a marketplace order (a line's total)
+     * into the store's base currency: the order's base-currency snapshot over
+     * its own total, the snapshot the marketplace sales figure sums
+     * (mp_totals_by_marketplace()). An order without a snapshot, or with a
+     * zero total, keeps its amounts as they are.
+     *
+     * Up to 3.3.52 the lines were summed in each order's own currency, so on a
+     * store selling in dollars an Amazon order in lira listed a product at
+     * "$6,999.00" under marketplace sales of $1,443.08.
+     *
+     * Joins onto mp_order_header_clause()'s FROM (aliases o or p).
+     *
+     * @param bool $is_hpos HPOS order tables.
+     * @return array{join: string, rate: string}
+     */
+    private function mp_line_rate_sql( $is_hpos ) {
+        global $wpdb;
+        if ( $is_hpos ) {
+            $fx = brikpanel_base_total_sql( true, 'o.id', 'o.total_amount', 'bpfx' );
+            return [
+                'join' => $fx['join'],
+                'rate' => "COALESCE(CAST({$fx['expr']} AS DECIMAL(20,6)) / NULLIF(o.total_amount, 0), 1)",
+            ];
+        }
+        $fx = brikpanel_base_total_sql( false, 'p.ID', 'bpot.meta_value', 'bpfx' );
+        return [
+            'join' => " LEFT JOIN {$wpdb->postmeta} bpot ON bpot.post_id = p.ID AND bpot.meta_key = '_order_total' AND " . brikpanel_sql_first_meta_guard( 'post', 'bpot' ) . $fx['join'],
+            'rate' => "COALESCE(CAST({$fx['expr']} AS DECIMAL(20,6)) / NULLIF(CAST(bpot.meta_value AS DECIMAL(20,6)), 0), 1)",
+        ];
+    }
+
+    /**
      * Top categories per marketplace.
      *
      * Categories require a WC product to read taxonomy terms from. We try
@@ -6525,6 +6871,7 @@ class Brikpanel_Dashboard {
         global $wpdb;
 
         $clause = $this->mp_order_header_clause( $start_gmt, $end_gmt, $is_hpos, $include_statuses, $status_placeholders, $meta_key );
+        $fx     = $this->mp_line_rate_sql( $is_hpos );
 
         // COALESCE: _product_id wins; otherwise resolve via SKU lookup.
         //
@@ -6539,8 +6886,8 @@ class Brikpanel_Dashboard {
                     tt.term_id                    AS term_id,
                     t.name                        AS term_name,
                     COUNT(DISTINCT {$clause['order_alias']}) AS orders,
-                    COALESCE(SUM(CAST(im_total.meta_value AS DECIMAL(20,6))), 0) AS revenue
-             FROM {$clause['from']}
+                    COALESCE(SUM(CAST(im_total.meta_value AS DECIMAL(20,6)) * {$fx['rate']}), 0) AS revenue
+             FROM {$clause['from']}{$fx['join']}
              LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta im_pid
                  ON oi.order_item_id = im_pid.order_item_id AND im_pid.meta_key = '_product_id'
              LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta im_sku
@@ -6586,14 +6933,18 @@ class Brikpanel_Dashboard {
         global $wpdb;
 
         $clause = $this->mp_order_header_clause( $start_gmt, $end_gmt, $is_hpos, $include_statuses, $status_placeholders, $meta_key );
+        $fx     = $this->mp_line_rate_sql( $is_hpos );
 
+        // Ordered by sales in the store's currency since 3.3.53 (by units up
+        // to 3.3.52): the card lists what brought the most money, each row
+        // with its sales, its bar and the units under them.
         $sql = $wpdb->prepare(
             "SELECT oi.order_item_name AS name,
                     {$clause['marketplace_alias']} AS marketplace_id,
                     SUM(CAST(im_qty.meta_value AS UNSIGNED))            AS qty,
-                    SUM(CAST(im_total.meta_value AS DECIMAL(20,6)))     AS revenue,
+                    SUM(CAST(im_total.meta_value AS DECIMAL(20,6)) * {$fx['rate']}) AS revenue,
                     MAX(CAST(im_pid.meta_value AS UNSIGNED))            AS product_id
-             FROM {$clause['from']}
+             FROM {$clause['from']}{$fx['join']}
              LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta im_qty
                  ON oi.order_item_id = im_qty.order_item_id AND im_qty.meta_key = '_qty'
              LEFT JOIN {$wpdb->prefix}woocommerce_order_itemmeta im_total
@@ -6603,7 +6954,7 @@ class Brikpanel_Dashboard {
              WHERE {$clause['where']}
              AND oi.order_item_name <> ''
              GROUP BY oi.order_item_name, marketplace_id
-             ORDER BY qty DESC, revenue DESC
+             ORDER BY revenue DESC, qty DESC
              LIMIT 5",
             $clause['args']
         );

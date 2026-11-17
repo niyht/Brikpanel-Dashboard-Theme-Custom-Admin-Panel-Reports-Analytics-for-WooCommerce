@@ -219,6 +219,49 @@ class Brikpanel_Sheets_Client {
 	}
 
 	/**
+	 * Read several ranges in one request (values:batchGet).
+	 *
+	 * The reverse pull only needs two or three columns of the tab (the id, the
+	 * status, the line item). Reading the whole tab to get them downloaded and
+	 * decoded every other column on every poll, which on a big store is
+	 * megabytes of order text a few times an hour for nothing.
+	 *
+	 * @param string   $spreadsheet_id
+	 * @param string[] $ranges              A1 ranges, e.g. "'Orders'!C2:C".
+	 * @param string   $value_render_option See values_get().
+	 * @param string   $major_dimension     'ROWS' or 'COLUMNS'. With COLUMNS a
+	 *                                      one-column range comes back as
+	 *                                      [ [ cell, cell, ... ] ].
+	 * @return array<int, array> One entry per requested range, in the order
+	 *                           asked, [] for a range with no values. Trailing
+	 *                           empty cells are omitted, as in values_get().
+	 */
+	public function values_batch_get( $spreadsheet_id, array $ranges, $value_render_option = 'FORMATTED_VALUE', $major_dimension = 'ROWS' ) {
+		$ranges = array_values( $ranges );
+		if ( empty( $ranges ) ) {
+			return [];
+		}
+		$query = [];
+		foreach ( $ranges as $range ) {
+			$query[] = 'ranges=' . rawurlencode( (string) $range );
+		}
+		$query[] = 'valueRenderOption=' . rawurlencode( $value_render_option );
+		$query[] = 'majorDimension=' . ( 'COLUMNS' === $major_dimension ? 'COLUMNS' : 'ROWS' );
+
+		$path = '/spreadsheets/' . rawurlencode( $spreadsheet_id ) . '/values:batchGet?' . implode( '&', $query );
+		$resp = $this->request( 'GET', self::SHEETS_BASE . $path );
+
+		$value_ranges = isset( $resp['valueRanges'] ) && is_array( $resp['valueRanges'] ) ? array_values( $resp['valueRanges'] ) : [];
+		$out          = [];
+		foreach ( $ranges as $i => $unused ) {
+			$out[ $i ] = isset( $value_ranges[ $i ]['values'] ) && is_array( $value_ranges[ $i ]['values'] )
+				? $value_ranges[ $i ]['values']
+				: [];
+		}
+		return $out;
+	}
+
+	/**
 	 * Clear values in a range (formatting preserved).
 	 *
 	 * @param string $spreadsheet_id

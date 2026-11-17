@@ -181,6 +181,45 @@
 		});
 	}
 
+	// A value being written (only text changed): fitted now and then at most
+	// every 200 ms while it keeps changing, and once more after the last
+	// change. The dashboard's figures count up over 0.7 s: fitted on every
+	// frame, each one measured every tile at every column count (forced
+	// layouts on each frame, which made the globe beside them stutter).
+	function scheduleText(grid) {
+		if (grid.__bpTilesWait) {
+			grid.__bpTilesAgain = true;
+			return;
+		}
+		schedule(grid);
+		grid.__bpTilesWait = window.setTimeout(function () {
+			grid.__bpTilesWait = 0;
+			if (grid.__bpTilesAgain) {
+				grid.__bpTilesAgain = false;
+				scheduleText(grid);
+			}
+		}, 200);
+	}
+
+	// Whether a record only swapped text (a number counting up), no element.
+	function textOnly(record) {
+		if (record.type === 'characterData') {
+			return true;
+		}
+		if (record.type !== 'childList') {
+			return false;
+		}
+		var lists = [record.addedNodes, record.removedNodes];
+		for (var k = 0; k < 2; k++) {
+			for (var n = 0; n < lists[k].length; n++) {
+				if (lists[k][n].nodeType !== 3) {
+					return false;
+				}
+			}
+		}
+		return true;
+	}
+
 	function brikpanelTiles(grid) {
 		if (!grid || grid.nodeType !== 1 || grids.indexOf(grid) > -1) {
 			return grid || null;
@@ -213,11 +252,19 @@
 			// Values arrive by AJAX, a tile shows up or hides. The grid's own
 			// attributes are what fit() writes: those must not start another fit.
 			new window.MutationObserver(function (records) {
+				var text = false;
 				for (var i = 0; i < records.length; i++) {
-					if (!(records[i].type === 'attributes' && records[i].target === grid)) {
+					if (records[i].type === 'attributes' && records[i].target === grid) {
+						continue;
+					}
+					if (!textOnly(records[i])) {
 						schedule(grid);
 						return;
 					}
+					text = true;
+				}
+				if (text) {
+					scheduleText(grid);
 				}
 			}).observe(grid, { childList: true, subtree: true, characterData: true, attributes: true, attributeFilter: ['hidden', 'style', 'class'] });
 		}

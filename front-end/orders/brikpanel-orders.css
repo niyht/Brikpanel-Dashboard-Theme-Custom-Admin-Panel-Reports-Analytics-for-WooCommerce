@@ -3270,6 +3270,64 @@ body.bp-orders-compact .wp-list-table .column-payment_method {
 	white-space: nowrap;
 }
 
+/* Customer name. A long one gives way so the row never runs past the card: a
+   company name ("... SANAYİ TİCARET LİMİTED ŞİRKETİ") pushed the amount at the
+   end of the row out of sight (Salih, 14 Nov 2026). The grid track asks for
+   the whole name while there is room (max-content) but can shrink to nothing
+   (minmax(0, …)), so the table sizes this column from the name and cuts it,
+   ending in "…", only when the card cannot hold every column. Pages whose
+   names fit lay out exactly as before. The whole name is in the title (hover)
+   and in the order's panel. */
+body.bp-orders-compact .wp-list-table .bp-order-customer {
+	display: block;
+}
+
+body.bp-orders-compact .wp-list-table .bp-order-customer-fit {
+	display: grid;
+	grid-template-columns: minmax(0, max-content);
+}
+
+body.bp-orders-compact .wp-list-table .bp-order-customer-name {
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+/* The floor: an invisible, zero-height copy of the name (its title) capped at
+   8rem makes the column's narrowest width min(name, 8rem). With columns pinned
+   in the row ("Show in the row") a long name keeps about 15 letters instead of
+   shrinking to its first two, and a shorter one is never cut. A min-width on
+   the header cell would widen the column for short names too. */
+body.bp-orders-compact .wp-list-table .bp-order-customer::after {
+	content: attr(title);
+	display: block;
+	max-width: 8rem;
+	height: 0;
+	overflow: hidden;
+	visibility: hidden;
+	white-space: nowrap;
+}
+
+/* With the order number column hidden the arrow moves into this cell
+   (toggleHost() in brikpanel-orders.js). In the line it would push the name,
+   now a block, onto a second line, so it sits in the cell's start padding
+   instead: 28px arrow + the 6px gap it had. Phones place the arrow at the
+   card's end themselves. */
+@media screen and (min-width: 783px) {
+	body.bp-orders-compact .wp-list-table tbody .column-brikpanel_customer:has(> .bp-order-toggle) {
+		position: relative;
+		padding-inline-start: calc(.75rem + 34px) !important;
+	}
+
+	body.bp-orders-compact .wp-list-table tbody :is(td, th).column-brikpanel_customer > .bp-order-toggle {
+		position: absolute;
+		inset-block-start: 50%;
+		inset-inline-start: .75rem;
+		margin: 0;
+		translate: 0 -50%;
+	}
+}
+
 .bp-order-muted {
 	color: #616161;
 }

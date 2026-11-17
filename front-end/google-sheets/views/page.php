@@ -362,6 +362,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									'2'  => __( 'Every 2 minutes', 'brikpanel' ),
 									'5'  => __( 'Every 5 minutes', 'brikpanel' ),
 									'15' => __( 'Every 15 minutes', 'brikpanel' ),
+									'manual' => __( 'Manual only', 'brikpanel' ),
 								] as $val => $label ) : ?>
 									<label class="bp-gs-radio">
 										<input type="radio" name="pull_interval" value="<?php echo esc_attr( $val ); ?>" <?php checked( $config['orders_pull_interval'], $val ); ?>>
@@ -369,6 +370,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									</label>
 								<?php endforeach; ?>
 							</div>
+							<p class="bp-gs-help"><?php esc_html_e( 'Manual only: BrikPanel does not check the sheet on a schedule. Click "Pull now" to bring your edits in.', 'brikpanel' ); ?></p>
 						</div>
 
 						<div class="bp-gs-actions">
@@ -461,6 +463,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									'2'  => __( 'Every 2 minutes', 'brikpanel' ),
 									'5'  => __( 'Every 5 minutes', 'brikpanel' ),
 									'15' => __( 'Every 15 minutes', 'brikpanel' ),
+									'manual' => __( 'Manual only', 'brikpanel' ),
 								] as $val => $label ) : ?>
 									<label class="bp-gs-radio">
 										<input type="radio" name="pull_interval" value="<?php echo esc_attr( $val ); ?>" <?php checked( $config['products_pull_interval'], $val ); ?>>
@@ -468,6 +471,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									</label>
 								<?php endforeach; ?>
 							</div>
+							<p class="bp-gs-help"><?php esc_html_e( 'Manual only: BrikPanel does not check the sheet on a schedule. Click "Pull now" to bring your edits in.', 'brikpanel' ); ?></p>
 						</div>
 
 						<div class="bp-gs-actions">
@@ -656,6 +660,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									'2'  => __( 'Every 2 minutes', 'brikpanel' ),
 									'5'  => __( 'Every 5 minutes', 'brikpanel' ),
 									'15' => __( 'Every 15 minutes', 'brikpanel' ),
+									'manual' => __( 'Manual only', 'brikpanel' ),
 								] as $val => $label ) : ?>
 									<label class="bp-gs-radio">
 										<input type="radio" name="pull_interval" value="<?php echo esc_attr( $val ); ?>" <?php checked( $config['expenses_pull_interval'], $val ); ?>>
@@ -663,6 +668,7 @@ $bp_gs_render_connect_error = function ( array $err ) {
 									</label>
 								<?php endforeach; ?>
 							</div>
+							<p class="bp-gs-help"><?php esc_html_e( 'Manual only: BrikPanel does not check the sheet on a schedule. Click "Pull now" to bring your edits in.', 'brikpanel' ); ?></p>
 						</div>
 
 						<ul class="brikpanel-bullets bp-gs-info-list">

@@ -557,6 +557,16 @@ class Brikpanel_Dashboard_Topbar {
                                 <span class="brikpanel-topbar-dropdown-row-count" id="brikpanel-topbar-notif-customers">0</span>
                             </a>
                             <?php endif; ?>
+                            <?php
+                            /**
+                             * More rows for the Needs attention list (Return requests:
+                             * front-end/returns/brikpanel-returns-admin.php). Print an
+                             * <a class="brikpanel-topbar-dropdown-row" role="menuitem">.
+                             *
+                             * @since 3.3.52
+                             */
+                            do_action( 'brikpanel_topbar_attention_rows' );
+                            ?>
                         </div>
                     </div>
                     <?php endif; ?>

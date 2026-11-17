@@ -111,6 +111,17 @@ body.brikpanel-has-topbar .brikpanel-order-header {
     top: var(--bp-topbar-height) !important;
 }
 
+/* MailPoet pins its own header (logo and tabs) to the top of the page column
+   and, at 600px and below, moves it 46px down: the room WordPress keeps there
+   for its admin bar as #wpbody padding, which the rule above takes away. Under
+   our bar that left a 46px gap above MailPoet's header and laid the header over
+   the first 46px of the page (measured at 390px: header 98-162, page from 116).
+   A foreign element, so the selector has to beat MailPoet's own
+   `.wrap .mailpoet-top-bar { top: 46px }`; from 601px up MailPoet uses top: 0. */
+@media screen and (max-width: 600px) {
+    body.brikpanel-has-topbar .wrap .mailpoet-top-bar { top: 0; }
+}
+
 /* On embedded wc-admin screens (orders/products/coupons list tables, settings)
    WooCommerce injects a `.woocommerce-layout` notice-list wrapper before the
    page `.wrap`. Its core 10px top padding leaves a visible gap between our
@@ -269,19 +280,33 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
     white-space: nowrap;
 }
 
+/* The ring grows and fades by transform and opacity (3.3.50): a box-shadow
+   animation repainted on the main thread every frame, on every admin page. */
 .brikpanel-topbar-live-dot {
+    position: relative;
     width: 7px;
     height: 7px;
     border-radius: 50%;
     background: var(--bp-topbar-success);
-    box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.5);
+}
+
+.brikpanel-topbar-live-dot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(26, 137, 23, 0.45);
     animation: brikpanel-topbar-pulse 2s ease-out infinite;
 }
 
 @keyframes brikpanel-topbar-pulse {
-    0%   { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.45); }
-    70%  { box-shadow: 0 0 0 6px rgba(26, 137, 23, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0); }
+    0%   { transform: scale(1); opacity: 1; }
+    70%  { transform: scale(2.7); opacity: 0; }
+    100% { transform: scale(2.7); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .brikpanel-topbar-live-dot::after { animation: none; opacity: 0; }
 }
 
 .brikpanel-topbar-live-label { opacity: 0.8; }
@@ -293,8 +318,11 @@ body.brikpanel-has-topbar.woocommerce-embed-page .woocommerce-layout {
 }
 .brikpanel-topbar-live-pill.is-empty .brikpanel-topbar-live-dot {
     background: var(--bp-topbar-placeholder);
+}
+
+.brikpanel-topbar-live-pill.is-empty .brikpanel-topbar-live-dot::after {
     animation: none;
-    box-shadow: none;
+    opacity: 0;
 }
 
 /* Shown only while WooCommerce Site visibility is set to "Coming soon".

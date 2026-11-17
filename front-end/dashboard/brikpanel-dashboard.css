@@ -50,12 +50,14 @@
 
 /* Header
    Levels set by brikpanel-fit-row.js (the PHP lists them): one line while it
-   fits (title, Copy everything, ad platforms, Export Excel, date buttons);
-   `is-fold` puts ad platforms and Export in "More actions"; `is-two-rows`
-   gives the date buttons their own row; `is-preset-grid` makes them an even
-   3 x 2 grid; `is-stacked-main` puts the buttons under the title;
-   `is-icon-copy` shows Copy everything as its icon (last resort). The main
-   group is `display: contents` on one line. */
+   fits (title, Copy everything, "More actions", date buttons, date button);
+   `is-fold` is on at every level (since 3.3.50 ad platforms, Export and
+   Customize always sit in "More actions"); `is-two-rows` gives the date
+   buttons and the date button their own row; `is-preset-grid` makes the date
+   buttons an even 3 x 2 grid with the date button across the width under it;
+   `is-stacked-main` puts the buttons under the title; `is-icon-copy` shows
+   Copy everything as its icon (last resort). The main group is
+   `display: contents` on one line. */
 .brikpanel-dash-header {
     --bp-overflow-size: 1.875rem; /* "More actions" as tall as the buttons */
     display: flex;
@@ -69,16 +71,33 @@
     display: contents;
 }
 
+/* The title with "About these numbers" beside it and, while BrikMarket is
+   active, "With marketplace" under it. */
+.brikpanel-dash-heading {
+    min-width: 0;
+    margin-inline-end: auto;
+    order: 0;
+}
+
+.brikpanel-dash-heading-line {
+    display: flex;
+    align-items: center;
+    gap: 0.3125rem;
+}
+
+.brikpanel-dash-heading-line .brikpanel-dash-hint {
+    flex: none;
+    margin-inline-start: 0;
+}
+
 .brikpanel-dash-header h1 {
     font-size: var(--brikpanel-title-size, 1.125rem);
     font-weight: var(--brikpanel-title-weight, 600);
     line-height: var(--brikpanel-title-line, 1.3);
     padding: 0;
     margin: 0;
-    margin-inline-end: auto;
     color: var(--bp-text);
     white-space: nowrap;
-    order: 0;
 }
 
 .brikpanel-dash-actions {
@@ -90,7 +109,9 @@
 }
 
 .brikpanel-dash-range-wrap {
-    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     flex: none;
     order: 2;
 }
@@ -113,12 +134,20 @@
     min-width: 0;
 }
 
+/* The grid, then the date button under it, both as wide as the page. */
+.brikpanel-dash-header.is-preset-grid .brikpanel-dash-range-wrap {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    align-items: stretch;
+    gap: 0.375rem;
+}
+
 .brikpanel-dash-header.is-stacked-main .brikpanel-dash-header-main {
     flex-wrap: wrap;
     row-gap: 0.625rem;
 }
 
-.brikpanel-dash-header.is-stacked-main .brikpanel-dash-header-main h1 {
+.brikpanel-dash-header.is-stacked-main .brikpanel-dash-heading {
     flex: 1 1 100%;
 }
 
@@ -207,28 +236,98 @@
     color: #fff;
 }
 
-.brikpanel-dash-custom-range {
-    position: absolute;
-    top: calc(100% + 0.375rem);
-    inset-inline-end: 0;
-    z-index: 100;
-}
-
-.brikpanel-dash-custom-range input {
+/* The date button: the window on screen ("Oct 15 to Nov 13"); a click opens
+   the calendar, and a range picked there lights it like a preset. As tall as
+   the date buttons beside it (same padding, type and frame). */
+.brikpanel-dash-picker {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4375rem;
+    flex: none;
+    min-width: 0;
+    margin: 0;
     padding: 0.4375rem 0.75rem;
     font-size: 0.8125rem;
-    border: 1px solid var(--bp-input-border);
-    border-radius: 0.5rem;
+    font-weight: 500;
     color: var(--bp-text);
     background: var(--bp-card);
-    min-width: 220px;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+    border: 1px solid var(--bp-border);
+    border-radius: 0.5rem;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
 }
 
-.brikpanel-dash-custom-range input:focus {
-    outline: none;
-    border-color: var(--bp-input-focus);
-    box-shadow: 0 0 0 1px var(--bp-input-focus);
+.brikpanel-dash-picker:hover {
+    background: #f7f7f7;
+}
+
+.brikpanel-dash-picker:focus-visible {
+    outline: 2px solid var(--bp-primary);
+    outline-offset: 1px;
+}
+
+.brikpanel-dash-picker.active {
+    color: #fff;
+    background: var(--bp-primary);
+    border-color: var(--bp-primary);
+}
+
+.brikpanel-dash-picker.active:hover {
+    background: var(--bp-primary-hover);
+}
+
+.brikpanel-dash-picker-icon {
+    flex: none;
+    color: var(--bp-text-secondary);
+}
+
+.brikpanel-dash-picker.active .brikpanel-dash-picker-icon {
+    color: currentColor;
+}
+
+/* The text sits on top of hidden copies of every preset window, centred: the
+   button keeps the width of the longest one whatever it shows. */
+.brikpanel-dash-picker-face {
+    display: inline-grid;
+    justify-items: center;
+    align-items: center;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.brikpanel-dash-picker-now,
+.brikpanel-dash-picker-size {
+    grid-area: 1 / 1;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4375rem;
+    min-width: 0;
+    max-width: 100%;
+}
+
+.brikpanel-dash-picker-size {
+    visibility: hidden;
+}
+
+.brikpanel-dash-picker-size-icon {
+    flex: none;
+    width: 14px;
+    height: 14px;
+}
+
+.brikpanel-dash-picker-dates {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Under the grid on a phone: one frame across the width, as tall as the
+   grid's buttons (their padding and line height). */
+.brikpanel-dash-header.is-preset-grid .brikpanel-dash-picker {
+    padding: 0.5rem 0.75rem;
+    line-height: 1.2;
 }
 
 /* ===== Summary Cards ===== */
@@ -1169,14 +1268,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     margin-bottom: 1.25rem;
 }
 
-.brikpanel-dash-row-2-1 {
-    grid-template-columns: 2fr 1fr;
-}
-
-.brikpanel-dash-row-1-1 {
-    grid-template-columns: 1fr 1fr;
-}
-
 .brikpanel-dash-panel {
     background: var(--bp-card);
     border: 1px solid var(--bp-border);
@@ -1192,17 +1283,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     color: var(--bp-text);
     margin: 0 0 1rem;
     padding: 0;
-}
-
-/* Charts */
-.brikpanel-dash-chart-wrap {
-    position: relative;
-    height: 280px;
-    width: 100%;
-}
-
-.brikpanel-dash-chart-short {
-    height: 240px;
 }
 
 /* Abandoned carts: one line under the funnel chart. While two panels share
@@ -1362,33 +1442,14 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     margin: 0;
 }
 
-.brikpanel-dash-globe-theme-btn {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 2rem;
-    height: 2rem;
-    border: 1px solid var(--bp-border);
-    border-radius: 0.375rem;
-    background: transparent;
-    color: var(--bp-text-secondary, #616161);
-    cursor: pointer;
-    transition: all 0.15s ease;
-}
-
-.brikpanel-dash-globe-theme-btn:hover {
-    background: #f7f7f7;
-    color: var(--bp-text);
-}
-
 /* The globe's box. One rule (it used to be written twice, the later copy's
-   450px floor winning over the 320px height); the phone floor further down
-   now applies. With no order to place the box is hidden and the line after
-   it says why (field test F3). */
+   450px floor winning over the 320px height). Since 3.3.50 it fills the left
+   column of the Locations card: 560px, 420px when the card stacks, 320px on a
+   phone (Locations card rules below). With no order to place the box is
+   hidden and the line after it says why (field test F3). */
 .brikpanel-dash-globe-wrap {
     position: relative;
-    height: 320px;
-    min-height: 450px;
+    height: 560px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -1405,35 +1466,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
     display: block;
 }
 
-/* Dark theme */
-.brikpanel-globe-dark {
-    background: #1a1a1a;
-    border-color: #333;
-}
-
-.brikpanel-globe-dark .brikpanel-dash-globe-header h2 {
-    color: #e0e0e0;
-}
-
-.brikpanel-globe-dark .brikpanel-dash-globe-theme-btn {
-    border-color: #444;
-    color: #999;
-}
-
-.brikpanel-globe-dark .brikpanel-dash-globe-theme-btn:hover {
-    background: #333;
-    color: #fff;
-}
-
-.brikpanel-globe-dark .brikpanel-dash-globe-wrap {
-    background: #111;
-}
-
-/* Light theme */
-.brikpanel-globe-light .brikpanel-dash-globe-wrap {
-    background: #fafafa;
-}
-
 /* Locations panel */
 .brikpanel-dash-locations-panel {
     display: flex;
@@ -1448,17 +1480,6 @@ body.brikpanel-exp-modal-open { overflow: hidden; }
    WordPress gives every admin h2 display: block, which beats [hidden]. */
 .brikpanel-dash-locations-h2[hidden] {
     display: none;
-}
-
-/* Order source badges */
-.brikpanel-dash-source {
-    display: inline-block;
-    padding: 0.125rem 0.5rem;
-    border-radius: 0.25rem;
-    font-size: 0.6875rem;
-    font-weight: 600;
-    color: #fff;
-    white-space: nowrap;
 }
 
 /* Empty state. Full width also inside a flex row or a grid, or the text
@@ -1819,15 +1840,16 @@ button.brikpanel-dash-guide__item:focus-visible {
     box-shadow: 0 1px 2px rgba(0,0,0,0.08);
 }
 
-/* ===== Region map of a store selling in one country ===== */
-/* World | Country, at the end of the card's head row. */
+/* ===== Region maps (3.3.36; every country with a map since 3.3.50) ===== */
+/* The end of the card's head: on the globe one button, "<flag> <country>
+   map" (the busiest country that has a map); on a map World and the
+   country, dark, which opens the menu of the other countries' maps. */
 .brikpanel-loc-mode {
+    position: relative;
     display: inline-flex;
-    background: var(--bp-bg, #f1f1f1);
-    border: 1px solid var(--bp-border);
-    border-radius: 0.375rem;
-    padding: 2px;
-    gap: 2px;
+    align-items: center;
+    gap: 0.5rem;
+    margin-inline-start: auto;
 }
 
 .brikpanel-loc-mode[hidden] {
@@ -1837,27 +1859,38 @@ button.brikpanel-dash-guide__item:focus-visible {
 .brikpanel-loc-mode-btn {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
-    font-size: 0.75rem;
-    font-weight: 550;
-    line-height: 1.4;
-    padding: 0.25rem 0.625rem;
-    border: none;
-    border-radius: 0.25rem;
-    background: transparent;
-    color: var(--bp-text-secondary, #616161);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s;
-}
-
-.brikpanel-loc-mode-btn:hover,
-.brikpanel-loc-mode-btn[aria-pressed="true"] {
+    gap: 0.4375rem;
+    height: 1.875rem;
+    padding: 0 0.75rem;
+    border: 0;
+    border-radius: 0.5rem;
     background: var(--bp-card, #fff);
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3), 0 1px 0 rgba(0, 0, 0, 0.05);
     color: var(--bp-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
+    line-height: 1;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background-color 0.15s ease;
+}
+
+.brikpanel-loc-mode-btn[hidden] {
+    display: none;
+}
+
+.brikpanel-loc-mode-btn:hover {
+    background: #f7f7f7;
 }
 
 .brikpanel-loc-mode-btn[aria-pressed="true"] {
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    background: var(--bp-primary, #303030);
+    color: #fff;
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.2), inset 0 1px 0 rgba(255, 255, 255, 0.1);
+}
+
+.brikpanel-loc-mode-btn[aria-pressed="true"]:hover {
+    background: var(--bp-primary-hover, #1a1a1a);
 }
 
 .brikpanel-loc-mode-btn:focus-visible {
@@ -1867,6 +1900,99 @@ button.brikpanel-dash-guide__item:focus-visible {
 
 .brikpanel-loc-mode-btn svg {
     flex: none;
+    color: var(--bp-text-secondary, #616161);
+}
+
+.brikpanel-loc-mode-btn[aria-pressed="true"] svg {
+    color: currentColor;
+}
+
+/* The map icon on the globe; on a map the menu's arrow, when there are
+   other countries' maps to open. */
+.brikpanel-loc-mode-btn[aria-pressed="true"] .bp-loc-open-icon,
+.bp-loc-open:not([aria-haspopup]) .bp-loc-chev {
+    display: none;
+}
+
+/* A long country name gives way before the button leaves the head. */
+.bp-loc-open .brikpanel-loc-mode-country {
+    overflow: hidden;
+    max-width: 12.5rem;
+    text-overflow: ellipsis;
+}
+
+.bp-loc-flag {
+    font-size: 0.9375rem;
+    line-height: 1;
+}
+
+.bp-loc-flag:empty {
+    display: none;
+}
+
+/* The other countries' maps, under the country button. */
+.bp-loc-menu {
+    position: absolute;
+    top: calc(100% + 0.375rem);
+    inset-inline-end: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    box-sizing: border-box;
+    min-width: 13.75rem;
+    max-width: calc(100vw - 2rem);
+    max-height: 20rem;
+    overflow-y: auto;
+    padding: 0.375rem;
+    background: var(--bp-card, #fff);
+    border: 1px solid var(--bp-border, #e3e3e3);
+    border-radius: 0.75rem;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12), 0 2px 4px rgba(0, 0, 0, 0.04);
+}
+
+.bp-loc-menu[hidden] {
+    display: none;
+}
+
+.bp-loc-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    width: 100%;
+    min-height: 2.125rem;
+    padding: 0.375rem 0.625rem;
+    border: 0;
+    border-radius: 0.4375rem;
+    background: transparent;
+    color: var(--bp-text);
+    font-size: 0.8125rem;
+    font-weight: 500;
+    text-align: start;
+    cursor: pointer;
+}
+
+.bp-loc-menu-item:hover,
+.bp-loc-menu-item:focus-visible {
+    background: #f7f7f7;
+    outline: none;
+}
+
+.bp-loc-menu-item[aria-checked="true"] {
+    font-weight: 600;
+}
+
+.bp-loc-menu-name {
+    overflow: hidden;
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.bp-loc-menu-item small {
+    margin-inline-start: auto;
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
 }
 
 /* The map fills the globe's box, over the world globe while one hands over
@@ -2042,11 +2168,6 @@ button.brikpanel-dash-guide__item:focus-visible {
 }
 
 @media (max-width: 960px) {
-    .brikpanel-dash-row-2-1,
-    .brikpanel-dash-row-1-1 {
-        grid-template-columns: 1fr;
-    }
-
     .brikpanel-dash-cards {
         grid-template-columns: repeat(2, 1fr);
     }
@@ -2059,6 +2180,7 @@ button.brikpanel-dash-guide__item:focus-visible {
 
     .brikpanel-dash-header:not([data-bp-fit-level]) .brikpanel-dash-range-wrap {
         flex: 1 1 100%;
+        flex-wrap: wrap;
     }
 
     .brikpanel-dash-header:not([data-bp-fit-level]) .brikpanel-dash-presets {
@@ -2114,17 +2236,7 @@ button.brikpanel-dash-guide__item:focus-visible {
        of the box; a table that still cannot fit turns into cards (field test
        B6, brikpanel-fit-table.js). */
     .brikpanel-dash-table td.rank,
-    .brikpanel-dash-table td:last-child,
-    .brikpanel-dash-table .brikpanel-dash-source { white-space: nowrap; }
-
-    .brikpanel-dash-globe-wrap {
-        min-height: 300px;
-    }
-}
-
-/* ===== Globe Theme Toggle (Hidden) ===== */
-#globe-theme-toggle {
-    display: none;
+    .brikpanel-dash-table td:last-child { white-space: nowrap; }
 }
 
 /* Globe container: .brikpanel-dash-globe-wrap above (one rule). */
@@ -2163,6 +2275,25 @@ button.brikpanel-dash-guide__item:focus-visible {
     }
 }
 
+/* The labels over the WebGL globe (3.3.50): one layer, each pin moved by a
+   transform from the globe's projection (setupGlobeLabels()). The label in it
+   keeps its own fade and lift. The drawn globe still places its labels in
+   anchors of its own, with the same .globe-code-tag. */
+.globe-tag-layer {
+    position: absolute;
+    inset: 0;
+    pointer-events: none;
+}
+
+.globe-tag-pin {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 0;
+    height: 0;
+    will-change: transform;
+}
+
 .globe-code-tag {
     position: absolute;
     left: 6px;
@@ -2192,74 +2323,325 @@ button.brikpanel-dash-guide__item:focus-visible {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15), 0 0 0 1px rgba(0, 0, 0, 0.05);
 }
 
-/* ===== Country List (rich panel) ===== */
-.brikpanel-country-list {
+/* The country whose row is pointed at (3.3.50). */
+.globe-code-tag--visible.globe-code-tag--focus {
+    background: var(--bp-primary, #303030);
+    border-color: var(--bp-primary, #303030);
+    color: #fff;
+    transform: translateY(0) scale(1.12);
+}
+
+/* ===== Locations card (one card since 3.3.50) =====
+   The globe or a region map on the left, the list on the right; stacked
+   when the dashboard is under 800px (bp-dv-lt800), the head in two lines on
+   a phone (bp-dv-lt560). */
+.bp-loc-head {
+    flex-wrap: nowrap;
+    margin-bottom: 0;
+}
+
+.bp-loc-summary {
     display: flex;
-    flex-direction: column;
-    gap: 0.625rem;
+    align-items: baseline;
+    flex-wrap: wrap;
+    gap: 0.25rem 0.625rem;
+    margin: 0.875rem 0 0.25rem;
 }
 
-.brikpanel-country-row {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.625rem;
+.bp-loc-summary[hidden] {
+    display: none;
 }
 
-.country-flag {
-    font-size: 1.25rem;
-    line-height: 1;
-    flex-shrink: 0;
-    margin-top: 1px;
+.bp-loc-big {
+    color: var(--bp-text);
+    font-size: 1.625rem;
+    font-weight: 650;
+    line-height: 1.15;
+    letter-spacing: -0.01em;
+    font-variant-numeric: tabular-nums;
 }
 
-.country-info {
-    flex: 1;
+.bp-loc-sub {
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.8125rem;
+}
+
+.bp-loc-sub b {
+    color: var(--bp-text);
+    font-weight: 600;
+}
+
+.bp-loc-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    align-items: start;
+}
+
+.bp-loc-stage {
     min-width: 0;
 }
 
-.country-header {
+.bp-loc-side {
+    min-width: 0;
+    margin-inline-start: 1.375rem;
+    padding-inline-start: 1.625rem;
+    border-inline-start: 1px solid #ebebeb;
+}
+
+.bp-loc-side-head {
     display: flex;
+    align-items: center;
     justify-content: space-between;
-    align-items: baseline;
     gap: 0.5rem;
+    margin: 0.625rem 0 0.5rem;
+}
+
+.bp-loc-card .bp-loc-side h3 {
+    margin: 0;
+    padding: 0;
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.78125rem;
+    font-weight: 600;
+    line-height: 1.3;
+}
+
+.bp-loc-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    padding: 0.125rem 0.25rem;
+    margin-inline-start: -0.25rem;
+    border: 0;
+    border-radius: 0.375rem;
+    background: transparent;
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.78125rem;
+    font-weight: 550;
+    cursor: pointer;
+}
+
+.bp-loc-back[hidden] {
+    display: none;
+}
+
+.bp-loc-back:hover {
+    background: #f7f7f7;
+    color: var(--bp-text);
+}
+
+.bp-loc-back:focus-visible {
+    outline: 2px solid var(--bp-text, #303030);
+    outline-offset: 1px;
+}
+
+/* Right to left the countries are back to the right. */
+[dir="rtl"] .bp-loc-back svg {
+    transform: scaleX(-1);
+}
+
+/* Rows: rank, flag, name, the figure with its count, the map icon, the bar
+   under the name. A country row is a button (its map, or the globe turns
+   to it); a region row is the same grid without one. */
+.brikpanel-country-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.brikpanel-country-row {
+    display: grid;
+    grid-template-columns: 1.125rem 1.375rem minmax(0, 1fr) auto 1.75rem;
+    align-items: center;
+    column-gap: 0.625rem;
+    row-gap: 0.3125rem;
+    box-sizing: border-box;
+    width: 100%;
+    margin: 0;
+    padding: 0.5rem 0.375rem 0.5625rem;
+    border: 0;
+    border-radius: 0.5625rem;
+    background: transparent;
+    color: var(--bp-text);
+    font: inherit;
+    text-align: start;
+}
+
+button.brikpanel-country-row {
+    cursor: pointer;
+}
+
+button.brikpanel-country-row:hover,
+button.brikpanel-country-row:focus-visible,
+.brikpanel-country-row.is-hover {
+    background: #f7f7f7;
+}
+
+button.brikpanel-country-row:focus-visible {
+    outline: 2px solid var(--bp-text, #303030);
+    outline-offset: -2px;
+}
+
+.bp-loc-rank {
+    color: var(--bp-text-secondary, #616161);
+    font-size: 0.75rem;
+    font-variant-numeric: tabular-nums;
+    text-align: center;
+}
+
+.country-flag {
+    font-size: 1.125rem;
+    line-height: 1;
 }
 
 .country-name {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--bp-text);
-    white-space: nowrap;
     overflow: hidden;
+    color: var(--bp-text);
+    font-size: 0.84375rem;
+    font-weight: 550;
+    white-space: nowrap;
     text-overflow: ellipsis;
 }
 
+.bp-loc-val {
+    text-align: end;
+    white-space: nowrap;
+}
+
 .country-total {
+    display: block;
+    color: var(--bp-text);
     font-size: 0.8125rem;
     font-weight: 600;
-    color: var(--bp-text);
-    white-space: nowrap;
-    flex-shrink: 0;
-}
-
-.country-bar-wrap {
-    height: 4px;
-    background: var(--bp-bg);
-    border-radius: 2px;
-    margin: 0.25rem 0;
-    overflow: hidden;
-}
-
-.country-bar {
-    height: 100%;
-    background: var(--bp-text);
-    border-radius: 2px;
-    min-width: 2px;
-    transition: width 0.4s ease;
+    font-variant-numeric: tabular-nums;
 }
 
 .country-meta {
-    font-size: 0.6875rem;
+    display: block;
+    margin-top: 1px;
     color: var(--bp-text-secondary, #616161);
+    font-size: 0.71875rem;
+    font-weight: 500;
+}
+
+.bp-loc-mapicon {
+    display: grid;
+    place-items: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    border-radius: 0.4375rem;
+    color: var(--bp-text-secondary, #616161);
+}
+
+button.brikpanel-country-row:hover .bp-loc-mapicon,
+button.brikpanel-country-row:focus-visible .bp-loc-mapicon,
+.brikpanel-country-row.is-hover .bp-loc-mapicon {
+    background: var(--bp-card, #fff);
+    box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3);
+    color: var(--bp-text);
+}
+
+.country-bar-wrap {
+    grid-column: 3 / 5;
+    height: 4px;
+    overflow: hidden;
+    border-radius: 2px;
+    background: #f1f1f1;
+}
+
+.country-bar {
+    display: block;
+    height: 100%;
+    min-width: 2px;
+    border-radius: 2px;
+    background: var(--bp-text);
+    transition: width 0.4s ease;
+}
+
+/* Cities: name and count, a hairline between them. */
+.bp-loc-cities {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    font-size: 0.8125rem;
+}
+
+.bp-loc-cities li {
+    display: flex;
+    align-items: baseline;
+    gap: 0.75rem;
+    margin: 0;
+    padding: 0.4375rem 0.375rem;
+    border-bottom: 1px solid #f1f1f1;
+}
+
+.bp-loc-cities li:last-child {
+    border-bottom: 0;
+}
+
+.bp-loc-cities span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    color: var(--bp-text);
+    white-space: nowrap;
+    text-overflow: ellipsis;
+}
+
+.bp-loc-cities b {
+    flex: none;
+    color: var(--bp-text);
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Waiting for a country's map (its figures or file). */
+.bp-loc-card.bp-loc-wait,
+.bp-loc-card.bp-loc-wait button {
+    cursor: progress;
+}
+
+/* Stacked: the globe over the list. */
+.brikpanel-dashboard.bp-dv-lt800 .bp-loc-body {
+    grid-template-columns: minmax(0, 1fr);
+}
+
+.brikpanel-dashboard.bp-dv-lt800 .bp-loc-side {
+    margin: 0.5rem 0 0;
+    padding: 0;
+    border: 0;
+}
+
+.brikpanel-dashboard.bp-dv-lt800 .bp-loc-stage .brikpanel-dash-globe-wrap {
+    height: 420px;
+}
+
+/* Phone: the title and the map button on the first line, the tabs across
+   the second. */
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-head {
+    flex-wrap: wrap;
+    row-gap: 0.75rem;
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-head .brikpanel-dash-globe-title-group {
+    display: contents;
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-head .brikpanel-loc-tabs {
+    order: 3;
+    display: flex;
+    flex: 1 1 100%;
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-head .brikpanel-loc-tab {
+    flex: 1 1 0;
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-stage .brikpanel-dash-globe-wrap {
+    height: 320px;
+}
+
+.brikpanel-dashboard.bp-dv-lt560 .bp-loc-big {
+    font-size: 1.375rem;
 }
 
 /* =============================================================================
@@ -2456,12 +2838,10 @@ button.brikpanel-dash-guide__item:focus-visible {
 }
 
 /* =============================================================================
-   Marketplace Analytics (BrikMarket integration)
+   BrikMarket: "With marketplace" under the page title, and the quiet change
+   line of the profit cards. The Marketplaces cards themselves are in the
+   redesigned cards' block (bp-dv-mp, end of this file).
    ============================================================================= */
-
-.brikpanel-dash-marketplace {
-    margin-bottom: 1.25rem;
-}
 
 /* Render the marketplace qualifier as a muted sub-line beneath the title
    instead of inline. Inline, it widened the <h1> by ~130px, which — at common
@@ -2479,158 +2859,9 @@ button.brikpanel-dash-guide__item:focus-visible {
     letter-spacing: 0.005em;
 }
 
-.brikpanel-dash-mp-cards {
-    grid-template-columns: repeat(4, 1fr);
-}
-
 .brikpanel-dash-card-delta-static {
     color: var(--bp-text-secondary, #616161);
     font-weight: 500;
-}
-
-/* Per-marketplace list */
-.brikpanel-dash-mp-list {
-    display: flex;
-    flex-direction: column;
-    gap: 0.875rem;
-}
-
-.brikpanel-dash-mp-item {
-    border: 1px solid var(--bp-border);
-    border-radius: 0.625rem;
-    padding: 0.75rem 0.875rem;
-    background: #fafafa;
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    transition: background 0.15s ease, border-color 0.15s ease;
-}
-
-.brikpanel-dash-mp-item:hover {
-    background: #ffffff;
-    border-color: #cfcfcf;
-}
-
-.brikpanel-dash-mp-item-head {
-    display: flex;
-    align-items: center;
-    gap: 0.625rem;
-}
-
-.brikpanel-dash-mp-badge {
-    flex-shrink: 0;
-    width: 26px;
-    height: 26px;
-    border-radius: 0.5rem;
-    color: #ffffff;
-    font-size: 0.75rem;
-    font-weight: 700;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    box-shadow: inset 0 -1px 0 rgba(0,0,0,0.18);
-}
-
-.brikpanel-dash-mp-name {
-    flex: 1;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--bp-text);
-}
-
-.brikpanel-dash-mp-share {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--bp-text-secondary);
-    background: #ffffff;
-    border: 1px solid var(--bp-border);
-    padding: 0.125rem 0.4375rem;
-    border-radius: 999px;
-}
-
-.brikpanel-dash-mp-bar {
-    width: 100%;
-    height: 6px;
-    background: #ececec;
-    border-radius: 999px;
-    overflow: hidden;
-}
-
-.brikpanel-dash-mp-bar > span {
-    display: block;
-    height: 100%;
-    border-radius: 999px;
-    transition: width 0.3s cubic-bezier(.4,0,.2,1);
-}
-
-.brikpanel-dash-mp-stats {
-    display: grid;
-    grid-template-columns: repeat(4, 1fr);
-    gap: 0.5rem;
-}
-
-.brikpanel-dash-mp-stats > div {
-    display: flex;
-    flex-direction: column;
-    gap: 0.125rem;
-}
-
-.brikpanel-dash-mp-stats span {
-    font-size: 0.75rem;
-    font-weight: 500;
-    color: var(--bp-text-secondary, #616161);
-    text-transform: none;
-    letter-spacing: normal;
-}
-
-.brikpanel-dash-mp-stats strong {
-    font-size: 0.8125rem;
-    font-weight: 600;
-    color: var(--bp-text);
-}
-
-.brikpanel-dash-mp-stats strong .woocommerce-Price-amount {
-    font-size: inherit;
-    font-weight: inherit;
-}
-
-.brikpanel-dash-mp-delta.positive {
-    color: var(--bp-success);
-}
-
-.brikpanel-dash-mp-delta.negative {
-    color: var(--bp-error);
-}
-
-.brikpanel-dash-mp-delta.neutral {
-    color: var(--bp-text-secondary, #616161);
-}
-
-.brikpanel-dash-mp-cats {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.3125rem;
-    margin-top: 0.125rem;
-}
-
-.brikpanel-dash-mp-cat {
-    font-size: 0.6875rem;
-    font-weight: 500;
-    color: var(--bp-text-secondary);
-    background: #ffffff;
-    border: 1px solid var(--bp-border);
-    padding: 0.125rem 0.5rem;
-    border-radius: 999px;
-}
-
-@media (max-width: 1100px) {
-    .brikpanel-dash-mp-cards { grid-template-columns: repeat(2, 1fr); }
-    .brikpanel-dash-mp-stats { grid-template-columns: repeat(2, 1fr); }
-}
-
-@media (max-width: 782px) {
-    .brikpanel-dash-mp-cards { grid-template-columns: 1fr; }
-    .brikpanel-dash-mp-stats { grid-template-columns: 1fr 1fr; }
 }
 
 /* =========================================================================
@@ -2963,10 +3194,12 @@ button.brikpanel-dash-guide__item:focus-visible {
     color: #1a8917;
 }
 
-/* The ad platforms link beside Export: the same secondary button. Its style
-   used to be printed inline by the ads module, where a margin-left beat the
-   phone rules and pushed it out of line (field test C6). */
-.brikpanel-dash-ads-cta {
+/* The ad platforms link and Customize beside Export: the same secondary
+   button. The ad link's style used to be printed inline by the ads module,
+   where a margin-left beat the phone rules and pushed it out of line (field
+   test C6). Customize sat at the end of the date line until 3.3.49. */
+.brikpanel-dash-ads-cta,
+.brikpanel-dash-customize {
     display: inline-flex;
     align-items: center;
     gap: 0.4375rem;
@@ -2984,50 +3217,23 @@ button.brikpanel-dash-guide__item:focus-visible {
 }
 
 .brikpanel-dash-ads-cta:hover,
-.brikpanel-dash-ads-cta:focus {
+.brikpanel-dash-ads-cta:focus,
+.brikpanel-dash-customize:hover,
+.brikpanel-dash-customize:focus {
     background: #f7f7f7;
     color: var(--bp-text, #303030);
 }
 
-.brikpanel-dash-ads-cta:focus-visible {
+.brikpanel-dash-ads-cta:focus-visible,
+.brikpanel-dash-customize:focus-visible {
     outline: 2px solid var(--bp-primary, #303030);
     outline-offset: 1px;
     box-shadow: inset 0 0 0 1px var(--bp-border, #e3e3e3);
 }
 
-.brikpanel-dash-ads-cta-icon {
-    display: inline-flex;
-    color: var(--bp-text-secondary, #616161);
-}
-
-/* =========================================================================
-   PERIOD SUBTITLE  (which dates / how long the report covers)
-   ========================================================================= */
-.brikpanel-dash-period {
-    display: flex;
-    align-items: center;
-    gap: 0.4375rem;
-    margin: -0.5rem 0 1.25rem;
-    font-size: 0.8125rem;
-    font-weight: 500;
-    color: var(--bp-text-secondary, #616161);
-}
-
-.brikpanel-dash-period-icon {
-    display: inline-flex;
-    align-items: center;
-    color: var(--bp-text-placeholder, #8a8a8a);
-}
-
-/* "Customize" (the Dashboard sections setting) at the far end of the date
-   line. Its look is the shared link button (brikpanel-ui.css); only the place
-   is set here. */
-.brikpanel-dash-customize {
-    margin-inline-start: auto;
-}
-
+.brikpanel-dash-ads-cta-icon,
 .brikpanel-dash-customize-icon {
-    flex: none;
+    display: inline-flex;
     color: var(--bp-text-secondary, #616161);
 }
 
@@ -3276,8 +3482,7 @@ button.brikpanel-dash-guide__item:focus-visible {
 .brikpanel-dash-subs-panel + .bp-dv-row,
 .brikpanel-dash-subs-panel + .brikpanel-dash-row,
 .brikpanel-dash-subs-panel + .brikpanel-dash-profit,
-.brikpanel-dash-subs-panel + .bp-dv-kpis,
-.brikpanel-dash-subs-panel + .brikpanel-dash-marketplace {
+.brikpanel-dash-subs-panel + .bp-dv-kpis {
     margin-top: 1.25rem;
 }
 
@@ -3582,15 +3787,26 @@ button.brikpanel-dash-guide__item:focus-visible {
     box-shadow: inset 0 0 0 1px #d5ecd4;
 }
 
+/* The ring grows and fades by transform and opacity (3.3.50): a box-shadow
+   animation repainted on the main thread every frame, next to the globe. */
 .bp-dv-live-pill.is-on i {
+    position: relative;
     background: var(--bp-success);
+}
+
+.bp-dv-live-pill.is-on i::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: rgba(26, 137, 23, 0.45);
     animation: bp-dv-live-pulse 2s ease-out infinite;
 }
 
 @keyframes bp-dv-live-pulse {
-    0% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0.45); }
-    70% { box-shadow: 0 0 0 6px rgba(26, 137, 23, 0); }
-    100% { box-shadow: 0 0 0 0 rgba(26, 137, 23, 0); }
+    0% { transform: scale(1); opacity: 1; }
+    70% { transform: scale(2.7); opacity: 0; }
+    100% { transform: scale(2.7); opacity: 0; }
 }
 
 .bp-dv-live-body {
@@ -4016,13 +4232,15 @@ button.brikpanel-dash-guide__item:focus-visible {
     display: none;
 }
 
-.bp-dv-rates-box {
+.bp-dv-rates-box,
+.bp-dv-mp-mix-box {
     display: flex;
     align-items: center;
     gap: 1.75rem;
 }
 
-.bp-dv-rates-box.is-narrow {
+.bp-dv-rates-box.is-narrow,
+.bp-dv-mp-mix-box.is-narrow {
     flex-direction: column;
     align-items: stretch;
     gap: 0.875rem;
@@ -4048,11 +4266,14 @@ button.brikpanel-dash-guide__item:focus-visible {
 .bp-dv-sq.is-failed, .bp-dv-sw.is-failed { fill: #d72c0d; background: #d72c0d; }
 
 .bp-dv-card.is-hl .bp-dv-sq.is-dim,
-.bp-dv-card.is-hl .bp-dv-rates-item.is-dim {
+.bp-dv-card.is-hl .bp-dv-rates-item.is-dim,
+.bp-dv-card.is-hl .bp-dv-ring-arc.is-dim,
+.bp-dv-card.is-hl .bp-dv-mp-mixitem.is-dim {
     opacity: 0.22;
 }
 
-.bp-dv-rates-leg {
+.bp-dv-rates-leg,
+.bp-dv-mp-mixleg {
     flex: 1 1 auto;
     min-width: 0;
     margin: 0;
@@ -4060,13 +4281,15 @@ button.brikpanel-dash-guide__item:focus-visible {
     list-style: none;
 }
 
-.bp-dv-rates-box.is-narrow .bp-dv-rates-leg {
+.bp-dv-rates-box.is-narrow .bp-dv-rates-leg,
+.bp-dv-mp-mix-box.is-narrow .bp-dv-mp-mixleg {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     column-gap: 1rem;
 }
 
-.bp-dv-rates-item {
+.bp-dv-rates-item,
+.bp-dv-mp-mixitem {
     display: grid;
     grid-template-columns: 10px minmax(0, 1fr) max-content;
     align-items: center;
@@ -4077,19 +4300,23 @@ button.brikpanel-dash-guide__item:focus-visible {
     transition: opacity 0.15s var(--bp-dv-ease);
 }
 
-.bp-dv-rates-item:first-child {
+.bp-dv-rates-item:first-child,
+.bp-dv-mp-mixitem:first-child {
     border-top: 0;
 }
 
-.bp-dv-rates-box.is-narrow .bp-dv-rates-item:nth-child(2) {
+.bp-dv-rates-box.is-narrow .bp-dv-rates-item:nth-child(2),
+.bp-dv-mp-mix-box.is-narrow .bp-dv-mp-mixitem:nth-child(2) {
     border-top: 0;
 }
 
-.bp-dv-rates-item:focus {
+.bp-dv-rates-item:focus,
+.bp-dv-mp-mixitem:focus {
     outline: none;
 }
 
-.bp-dv-rates-item:focus-visible {
+.bp-dv-rates-item:focus-visible,
+.bp-dv-mp-mixitem:focus-visible {
     outline: 2px solid var(--bp-text);
     outline-offset: 2px;
     border-radius: 0.25rem;
@@ -4123,11 +4350,15 @@ button.brikpanel-dash-guide__item:focus-visible {
 }
 
 .bp-dv-rates-item.is-zero .bp-dv-lname,
-.bp-dv-rates-item.is-zero .bp-dv-lpct {
+.bp-dv-rates-item.is-zero .bp-dv-lpct,
+.bp-dv-mp-mixitem.is-zero .bp-dv-lname,
+.bp-dv-mp-mixitem.is-zero .bp-dv-mp-mixname,
+.bp-dv-mp-mixitem.is-zero .bp-dv-lpct {
     color: var(--bp-text-secondary);
 }
 
-.bp-dv-rates-item.is-zero .bp-dv-sw {
+.bp-dv-rates-item.is-zero .bp-dv-sw,
+.bp-dv-mp-mixitem.is-zero .bp-dv-sw {
     opacity: 0.4;
 }
 
@@ -4739,6 +4970,187 @@ button.brikpanel-dash-guide__item:focus-visible {
 
 .bp-dv-card.is-w560 .bp-dv-seg-detail { grid-template-columns: minmax(0, 1fr); }
 
+/* ---- Marketplaces (BrikMarket, 3.3.53) ----
+   One row of two cards (render_section_marketplace_analytics()): the
+   period's marketplace figures, their sales day by day and where the
+   period's sales came from (the website and each marketplace, one ring), and
+   the best sellers there (the Products list's rows above). The brand colours
+   are the marketplaces' own; the website is the dashboard's dark grey. */
+.bp-dv-mp-row[hidden] {
+    display: none;
+}
+
+/* One marketplace: its mark and name at the end of the title line. */
+.bp-dv-mp-one {
+    align-items: center;
+    gap: 0.5rem;
+    color: var(--bp-text);
+    font-weight: 550;
+}
+
+.bp-dv-mp-one-name {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.bp-dv-mp-chip {
+    display: inline-grid;
+    flex: none;
+    place-items: center;
+    width: 1.375rem;
+    height: 1.375rem;
+    border-radius: 0.375rem;
+    background: var(--bp-mp, #616161);
+    box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.18);
+    color: #fff;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    line-height: 1;
+}
+
+/* The figures at the top, the ring at the bottom: a card shorter than the
+   best sellers beside it keeps both edges lined up with that card's rows. */
+.bp-dv-mp-body {
+    justify-content: space-between;
+    gap: 1.25rem;
+}
+
+/* Sales, Orders, Avg. order value: three columns parted by a thin line, or
+   one per line when the figures do not fit (the tiles helper). */
+.bp-dv-mp-figs {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0;
+}
+
+.bp-dv-mp-fig {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    min-width: 0;
+    padding-inline: 1.25rem;
+    border-inline-start: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-mp-fig:first-child {
+    padding-inline-start: 0;
+    border-inline-start: 0;
+}
+
+.bp-dv-mp-label {
+    color: var(--bp-text-secondary);
+    font-size: var(--brikpanel-label-size, 0.8125rem);
+    font-weight: var(--brikpanel-label-weight, 550);
+    white-space: nowrap;
+}
+
+.bp-dv-mp-value {
+    font-size: clamp(1.0625rem, 0.55rem + 0.7vw, 1.375rem);
+    letter-spacing: -0.01em;
+    white-space: nowrap;
+}
+
+.bp-dv-mp-figs.is-tiles-list > .bp-dv-mp-fig {
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: baseline;
+    column-gap: 0.625rem;
+    padding: 0.5rem 0;
+    border-inline-start: 0;
+    border-top: 1px solid var(--bp-dv-line-2);
+}
+
+.bp-dv-mp-figs.is-tiles-list > .bp-dv-mp-fig:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.bp-dv-mp-figs.is-tiles-list .bp-dv-mp-label {
+    flex: 1 1 auto;
+}
+
+.bp-dv-mp-figs.is-tiles-list .bp-dv-mp-value {
+    font-size: 1.0625rem;
+}
+
+/* Marketplace sales day by day (V.columns), the Live card's hourly bars'
+   look; a column under the pointer or the keyboard turns dark. */
+.bp-dv-mp-cols {
+    touch-action: pan-y;
+}
+
+.bp-dv-mp-cols:focus {
+    outline: none;
+}
+
+.bp-dv-mp-cols:focus-visible {
+    outline: 2px solid var(--bp-text);
+    outline-offset: 3px;
+    border-radius: 0.25rem;
+}
+
+.bp-dv-cols {
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-col {
+    fill: #d6d6d6;
+    transform-box: fill-box;
+    transform-origin: center bottom;
+}
+
+.bp-dv-col.is-zero,
+.bp-dv-col.is-later { fill: #ebebeb; }
+.bp-dv-col.is-hl { fill: #303030; }
+.bp-dv-col-label { fill: #616161; font-size: 10.5px; font-family: inherit; }
+
+/* Where the sales came from: one ring (the website dark grey, each
+   marketplace its colour) beside a line per part, the Order rates card's
+   legend (its rules above take these lines too). Under 400px of card the
+   ring is smaller (is-compact), under 280px it sits above two columns of
+   lines (is-narrow). */
+.bp-dv-ring {
+    flex: none;
+    display: block;
+    overflow: visible;
+}
+
+.bp-dv-mp-mix-box.is-narrow .bp-dv-ring {
+    align-self: center;
+}
+
+.bp-dv-mp-mix-box.is-compact {
+    gap: 1rem;
+}
+
+.bp-dv-ring-bg {
+    stroke: var(--bp-dv-track);
+}
+
+/* A part without its own colour is the website: the dashboard's dark grey. */
+.bp-dv-ring-arc {
+    stroke: var(--bp-ring, #303030);
+    transition: opacity 0.15s var(--bp-dv-ease);
+}
+
+.bp-dv-mp-mixitem .bp-dv-sw {
+    background: var(--bp-ring, #303030);
+}
+
+/* Its own direction (dir="auto", a Latin name on an Arabic screen) but the
+   line's side: the name and the money under it start at the same edge. */
+.bp-dv-mp-mixname {
+    overflow: hidden;
+    color: var(--bp-text);
+    font-size: 0.8125rem;
+    font-weight: 550;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    text-align: -webkit-match-parent; /* Chrome, Safari */
+    text-align: match-parent;
+}
+
 /* ---- Low stock + lifetime value ---- */
 .bp-dv-stock .brikpanel-dash-inv-line {
     margin: -0.375rem 0 0.625rem;
@@ -5063,7 +5475,7 @@ html.bp-dv-pages-lock {
 
 /* ---- Motion: none at all when the system asks for it ---- */
 @media (prefers-reduced-motion: reduce) {
-    .bp-dv-live-pill.is-on i { animation: none; }
+    .bp-dv-live-pill.is-on i::after { animation: none; opacity: 0; }
     .bp-dv-flow-cross,
     .bp-dv-flow-lab,
     .bp-dv-flow-vlab,
@@ -5072,15 +5484,25 @@ html.bp-dv-pages-lock {
     .bp-dv-rates-item { transition: none; }
 }
 
-/* DB-IP's credit for the visitor countries, the dashboard's last line
-   (3.3.40): its free list asks for a link where its countries are shown. */
-.brikpanel-dash-credit {
-    margin: 1.25rem 0 0;
-    text-align: center;
+/* DB-IP's credit (3.3.51): its free country list asks for a link where its
+   countries are shown. Grey and small, at the end of the two cards that show
+   them, only while they do (the dashboard script); up to 3.3.50 one line
+   closed the whole dashboard. Under the Visitors globe it takes the colour
+   scale's place, that tab has none. */
+.brikpanel-loc-credit {
+    margin-inline-start: auto;
+    color: inherit;
+}
+
+/* The Live card: the last line, at its end edge. */
+.bp-dv-live-credit {
+    align-self: flex-end;
+    margin-top: 0.5rem;
     font-size: 0.75rem;
     color: var(--bp-text-secondary, #616161);
 }
 
-.brikpanel-dash-credit a {
-    color: inherit;
+.brikpanel-loc-credit:hover,
+.bp-dv-live-credit:hover {
+    color: var(--bp-text, #303030);
 }

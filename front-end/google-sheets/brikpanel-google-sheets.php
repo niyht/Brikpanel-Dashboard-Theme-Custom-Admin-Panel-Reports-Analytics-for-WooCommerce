@@ -202,7 +202,7 @@ function brikpanel_gs_register_export_keys( $map ) {
 		'brikpanel_gs_killswitch', 'brikpanel_gs_error_log', 'brikpanel_gs_orders_custom_fields',
 		'brikpanel_gs_orders_last_sync', 'brikpanel_gs_orders_last_pull',
 		'brikpanel_gs_products_last_push', 'brikpanel_gs_products_last_pull',
-		'brikpanel_gs_products_push_queue', 'brikpanel_gs_products_rebuild',
+		'brikpanel_gs_products_push_queue', 'brikpanel_gs_products_rebuild', 'brikpanel_gs_orders_update_queue',
 		'brikpanel_gs_reports_last_sync', 'brikpanel_gs_customers_last_sync',
 		'brikpanel_gs_expenses_last_push', 'brikpanel_gs_expenses_last_pull',
 		'brikpanel_gs_expenses_state',

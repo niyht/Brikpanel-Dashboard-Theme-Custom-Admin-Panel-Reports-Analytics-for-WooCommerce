@@ -191,6 +191,10 @@ function brikpanel_export_placeholder_field_ids() {
 		// start number applied once on save, and the "Next order number" line.
 		'brikpanel_order_numbers_start',
 		'brikpanel_order_numbers_preview_field',
+		// Returns section (front-end/returns/brikpanel-returns-settings.php): the
+		// returns link with its Copy button, and the Flexible Refund warning.
+		'brikpanel_returns_link_field',
+		'brikpanel_returns_fr_note_field',
 	];
 }
 

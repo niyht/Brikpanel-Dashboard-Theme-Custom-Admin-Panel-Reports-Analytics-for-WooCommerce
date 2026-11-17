@@ -2,7 +2,7 @@
  * BrikPanel Dashboard - Main JavaScript
  *
  * Handles date filtering, batch AJAX data loading,
- * Chart.js rendering, and live visitor polling.
+ * the cards' drawing and live visitor polling.
  *
  * @package BrikPanel
  * @since 1.8.0
@@ -80,7 +80,6 @@
     let currentRange = CFG.saved_range || 'today';
     let customStartDate = CFG.saved_start || '';
     let customEndDate = CFG.saved_end || '';
-    let mpShareChart = null;
     let liveInterval = null;
     let globeInstance = null;
     let globeMarkers = [];
@@ -102,6 +101,13 @@
     // let go its spin comes up gently instead of starting at full speed.
     let globeHold = false;
     let globeSpinAt = 0;
+    // A country's region map opened on this page (3.3.50): any country with a
+    // map, not only the store's own. Not remembered over a reload.
+    let regionPick = null;        // its country code (null: the store's own map, or none)
+    let regionBlocks = {};        // region figures fetched for it, by regionKey()
+    let regionBlocksSig = '';     // the places of the orders those were fetched with
+    let regionWant = '';          // a map on its way (figures or file) until it flies in
+    let globeAim = null;          // { code, phi, theta }: the globe turns to the row pointed at
     var prefersReducedMotion = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     let datepickerInstance = null;
     let isLoading = false;
@@ -150,14 +156,6 @@
         return BF ? BF.fill(pattern || '%s', value) : String(value);
     }
 
-    // Chart.js defaults
-    if (typeof Chart !== 'undefined') {
-        Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif';
-        Chart.defaults.font.size = 12;
-        Chart.defaults.color = '#616161';
-        if (BF) BF.chart(Chart);
-    }
-
     // =========================================================================
     // INIT
     // =========================================================================
@@ -203,32 +201,65 @@
     });
 
     // =========================================================================
-    // DATE PRESETS
+    // DATE PRESETS AND THE DATE BUTTON
     // =========================================================================
 
+    // The date buttons pick a preset; the date button beside them writes the
+    // window on screen ("Oct 15 to Nov 13") and opens the calendar for any
+    // other range, which then lights it instead of a preset. Until 3.3.49 a
+    // "Custom" preset showed a date field floating under the buttons, and the
+    // window had a line of its own under the header.
+
+    // Light the preset of `range`, or the date button for a custom range.
+    function markRange(range) {
+        document.querySelectorAll('.brikpanel-dash-preset').forEach(function (b) {
+            var on = b.getAttribute('data-range') === range;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        var picker = document.getElementById('brikpanel-dash-picker');
+        if (picker) {
+            var custom = range === 'custom';
+            picker.classList.toggle('active', custom);
+            picker.setAttribute('aria-pressed', custom ? 'true' : 'false');
+        }
+    }
+
+    // The date button's text and its tooltip (the window in full, with its
+    // length). Empty values leave what is there.
+    function setPickerDates(dates, full) {
+        var picker = document.getElementById('brikpanel-dash-picker');
+        if (!picker) return;
+        var el = picker.querySelector('.brikpanel-dash-picker-dates');
+        if (el && dates && el.textContent !== dates) el.textContent = dates;
+        if (full) picker.title = full;
+    }
+
+    // A window the way the server writes the date button
+    // (Brikpanel_Dashboard::period_short_label()): day and month while both
+    // days are in the store's current year, the short date with the year
+    // otherwise, one day alone for a single day.
+    function shortRangeLabel(from, to) {
+        if (!BF) return '';
+        var year = String(CFG.store_today || '').slice(0, 4);
+        var thisYear = from.slice(0, 4) === year && to.slice(0, 4) === year;
+        var a = thisYear ? BF.dayMonth(from) : BF.dateShort(from);
+        var b = thisYear ? BF.dayMonth(to) : BF.dateShort(to);
+        return a === b ? a : BF.range(a, b);
+    }
+
     function initDatePresets() {
-        var presets = document.querySelectorAll('.brikpanel-dash-preset');
-        presets.forEach(function (btn) {
+        document.querySelectorAll('.brikpanel-dash-preset').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var range = this.getAttribute('data-range');
-
-                presets.forEach(function (b) { b.classList.remove('active'); });
-                this.classList.add('active');
-
-                var customRange = document.querySelector('.brikpanel-dash-custom-range');
-
-                if (range === 'custom') {
-                    customRange.style.display = 'block';
-                    if (datepickerInstance) {
-                        datepickerInstance.open();
-                    }
-                    return;
-                }
-
-                customRange.style.display = 'none';
-                if (datepickerInstance) {
+                if (datepickerInstance && datepickerInstance.isOpen) {
+                    // Drop a half-picked range first: closing with one day
+                    // picked would load that day as a custom range.
+                    datepickerInstance.clear();
                     datepickerInstance.close();
                 }
+                markRange(range);
+                setPickerDates(this.getAttribute('data-bp-dates'), this.title);
                 currentRange = range;
                 playNext = true;
                 fetchDashboardData();
@@ -238,28 +269,48 @@
 
     function initDatepicker() {
         var input = document.getElementById('brikpanel-dash-datepicker');
-        if (!input || typeof flatpickr === 'undefined') return;
+        var picker = document.getElementById('brikpanel-dash-picker');
+        if (!input || !picker || typeof flatpickr === 'undefined') return;
+        var rtl = document.documentElement.dir === 'rtl' || document.body.classList.contains('rtl');
+        // Where the calendar hangs from the date button (flatpickr's values).
+        var placeEnd = rtl ? 'auto left' : 'auto right'; // i18n-ignore: flatpickr position option, not text
+        var placeMiddle = 'auto center'; // i18n-ignore: flatpickr position option, not text
 
         // The calendar in the viewer's language from the store's first
-        // weekday; the field shows the range in the store's short date format
-        // ("1 Eyl 2026 - 22 Eyl 2026") while the picker itself keeps Y-m-d.
+        // weekday, hanging from the date button (its field is never seen).
         var pickerOptions = {
             mode: 'range',
             dateFormat: 'Y-m-d',
-            altInput: true,
-            altInputClass: 'brikpanel-dash-range-field',
             maxDate: 'today',
+            clickOpens: false,
+            positionElement: picker,
+            position: placeEnd,
+            // A click on the date button opens and closes the calendar
+            // (below); without this the calendar's own outside click closed
+            // it first and the button opened it again. A date button closes
+            // it in its own click (initDatePresets), dropping a half-picked
+            // range: closed by the outside click, the one day picked loaded
+            // first.
+            ignoredFocusElements: [picker].concat(Array.prototype.slice.call(document.querySelectorAll('.brikpanel-dash-presets'))),
             onOpen: function (selectedDates, dateStr, instance) {
-                // Start every reopen fresh — whether the picker was opened via the
-                // "Custom" preset button or by clicking the date field directly.
-                // Otherwise a previous range stays highlighted and anchored to its
-                // (possibly year-old) month, and the first click only resets the
-                // selection to a single date, which is confusing to pick a new range from.
+                // Start every reopen fresh. Otherwise a previous range stays
+                // highlighted and anchored to its (possibly year-old) month,
+                // and the first click only resets the selection to a single
+                // date, which is confusing to pick a new range from.
                 if (instance.selectedDates.length) {
                     instance.clear();
                 }
+                picker.setAttribute('aria-expanded', 'true');
             },
-            onClose: function (selectedDates) {
+            onClose: function (selectedDates, dateStr, instance) {
+                picker.setAttribute('aria-expanded', 'false');
+                // Escape or a pick inside the calendar leaves the focus there
+                // (or nowhere): it goes back to the date button.
+                var active = document.activeElement;
+                if (!active || active === document.body || active === input
+                    || (instance.calendarContainer && instance.calendarContainer.contains(active))) {
+                    picker.focus({ preventScroll: true });
+                }
                 if (!selectedDates.length) return;
 
                 var fmt = function (dt) {
@@ -274,11 +325,43 @@
                 customEndDate = fmt(selectedDates[selectedDates.length - 1]);
 
                 currentRange = 'custom';
+                markRange('custom');
+                setPickerDates(shortRangeLabel(customStartDate, customEndDate), '');
                 playNext = true;
                 fetchDashboardData();
             }
         };
         datepickerInstance = BF ? BF.datePicker(input, pickerOptions) : flatpickr(input, pickerOptions);
+        if (!datepickerInstance) return;
+
+        picker.addEventListener('click', function (e) {
+            if (datepickerInstance.isOpen) {
+                datepickerInstance.close();
+                return;
+            }
+            // Across a phone the button is wider than the calendar: the
+            // calendar opens under its middle. A closed calendar measures 0,
+            // flatpickr draws it 308px wide.
+            var cal = datepickerInstance.calendarContainer;
+            var wide = picker.offsetWidth >= ((cal && cal.offsetWidth) || 308);
+            datepickerInstance.set('position', wide ? placeMiddle : placeEnd);
+            datepickerInstance.open();
+            // Opened with Enter or Space (a click with no pointer): the focus
+            // goes to today in the calendar, where the arrow keys, Enter and
+            // Escape work (flatpickr listens there and on its field only).
+            if (e.detail === 0 && cal) {
+                var day = cal.querySelector('.flatpickr-day.today:not(.flatpickr-disabled)')
+                    || cal.querySelector('.flatpickr-day:not(.flatpickr-disabled):not(.prevMonthDay):not(.nextMonthDay)');
+                if (day) day.focus();
+            }
+        });
+        // Escape on the date button closes the calendar too.
+        picker.addEventListener('keydown', function (e) {
+            if ((e.key === 'Escape' || e.keyCode === 27) && datepickerInstance.isOpen) {
+                e.preventDefault();
+                datepickerInstance.close();
+            }
+        });
 
         // Restore a remembered custom range into the field so it reads the same
         // as when it was picked. `false` = do not fire onChange, this is state
@@ -417,6 +500,7 @@
             // other tabs read the new figures when they are opened.
             safe('locations', function () {
                 var sig = locSig(d.order_locations, locView);
+                noteLocations(d.order_locations);
                 locationsData = d.order_locations;
                 if (quiet && sig === locationsSig) return;
                 applyLocView(locView);
@@ -429,8 +513,8 @@
             safe('stock', function () { renderLowStock(d.low_stock, d.low_stock_empty); });
             safe('ltv', function () { renderLtvPanel(d.ltv_panel); });
             safe('subscriptions', function () { renderSubscriptions(d.subscription_stats); });
-            // Marketplace analytics (BrikMarket-only).
-            safe('marketplace', function () { renderMarketplaceAnalytics(d.marketplace); });
+            // Marketplaces (BrikMarket only).
+            safe('marketplace', function () { renderMarketplace(d); });
 
             // The live card's "Today so far" (and whether tracking is off)
             // came with this data.
@@ -608,7 +692,7 @@
         if (!period) return NaN;
         var end = ymdStamp(period.to_iso);
         if (period.range === 'yesterday') return end + DAY_MS;
-        return ['today', '7days', '30days', '90days'].indexOf(period.range) !== -1 ? end : NaN;
+        return ['today', '7days', '30days', '90days', 'mtd'].indexOf(period.range) !== -1 ? end : NaN;
     }
 
     // The smallest preset whose window holds the given day, to offer as a
@@ -754,28 +838,6 @@
         fillEmpty(p, r);
         wrap.textContent = '';
         wrap.appendChild(p);
-    }
-
-    // A chart with nothing to draw hides its box and shows the reason in the
-    // line the page prints right after it; given no reason, the line hides
-    // and the box comes back. The box is shown BEFORE Chart.js draws, which
-    // measures it. Returns true when the box was hidden until now.
-    function setChartEmpty(canvas, r) {
-        var chartBox = canvas ? canvas.parentElement : null;
-        var msg = chartBox ? chartBox.nextElementSibling : null;
-        if (!msg || !msg.classList.contains('brikpanel-dash-chart-empty')) msg = null;
-        if (r) {
-            if (msg) {
-                fillEmpty(msg, r);
-                msg.hidden = false;
-                chartBox.hidden = true;
-            }
-            return false;
-        }
-        var wasHidden = !!(chartBox && chartBox.hidden);
-        if (msg) msg.hidden = true;
-        if (chartBox) chartBox.hidden = false;
-        return wasHidden;
     }
 
     // The preset link inside an empty card clicks the matching date button.
@@ -2055,8 +2117,13 @@
         var hasPrev = prevPts.length > 0;
         var change = hasPrev ? calcDelta(total, prevTotal) : null;
         dvDelta(dvSlot(card, 'delta'), change, false);
-        // "vs previous 30 days" only beside a change it explains.
-        setIsolated(dvSlot(card, 'cmp'), (change === null || change === 0) ? '' : hourly
+        // "vs previous 30 days" only beside a change it explains. Month to
+        // date is weighed against the same days of last month (on the 1st, a
+        // single day by the hour: the 1st of last month, not yesterday).
+        var mtd = p.range === 'mtd';
+        setIsolated(dvSlot(card, 'cmp'), (change === null || change === 0) ? '' : mtd
+            ? (i18n.sales_vs_last_month || '')
+            : hourly
             ? (isToday ? (i18n.sales_vs_yesterday || '') : (i18n.sales_vs_day_before || ''))
             : (BF ? BF.count(i18n.sales_vs_days, Number(p.days) || curPts.length) : ''));
 
@@ -2064,7 +2131,7 @@
             ? (isToday ? (i18n.today || '') : (p.range === 'yesterday' ? (i18n.yesterday || '') : (BF ? BF.dayMonth(p.from_iso) : '')))
             : (p.label || '');
         var prevName = hourly
-            ? (isToday ? (i18n.yesterday || '') : (prevPts[0] && BF ? BF.dayMonth(String(prevPts[0].t).slice(0, 10)) : ''))
+            ? (isToday && !mtd ? (i18n.yesterday || '') : (prevPts[0] && BF ? BF.dayMonth(String(prevPts[0].t).slice(0, 10)) : ''))
             : (i18n.sales_prev_period || '');
         var curLabel = dvSlot(card, 'cur-label');
         var prevLabel = dvSlot(card, 'prev-label');
@@ -3232,6 +3299,13 @@
                 if (byUser) saveTab('visitors', key);
             });
         });
+        // Best sellers on marketplaces: products or categories (BrikMarket).
+        dvCards('mp-top').forEach(function (card) {
+            V.tabs(card, function (key, byUser) {
+                playProductBars(card);
+                if (byUser) saveTab('mp', key);
+            });
+        });
     }
 
     // The tab a user opens is remembered for them (Brikpanel_Dashboard::
@@ -3374,7 +3448,11 @@
                 });
             },
             customers: function (card) { drawCustomersCard(card, lastData); },
-            live: function (card) { drawLiveCard(card); }
+            live: function (card) { drawLiveCard(card); },
+            mp: function (card) {
+                if (lastData.marketplace) drawMpSummary(card, lastData.marketplace, lastData);
+                drawMpColumns(card, lastData);
+            }
         };
         document.querySelectorAll('.bp-dv-card').forEach(function (card) {
             var kind = card.getAttribute('data-bp-dv');
@@ -3506,52 +3584,19 @@
     var LOC_VISITOR_ROWS = 8;
 
 
-    function renderGlobe(locations) {
-        if (typeof COBE === 'undefined') return;
+    // The globe turns by time, not by frame (3.3.50): 0.18 radians a second,
+    // what 0.003 a frame gave on a 60 Hz screen. Counted per frame, every late
+    // frame showed as a jolt and a 144 Hz screen spun it 2.4 times as fast.
+    // A step never covers more than 34 ms (the region map's rule): a busy
+    // moment slows it down for a frame instead of making it jump.
+    var GLOBE_TURN = 0.18;
+    var GLOBE_STEP_MAX = 34;
 
-        var countries = locations.countries || [];
-        if (countries.length === 0) {
-            globeMarkers = [];
-            globeMarkersData = [];
-            if (globeInstance) {
-                globeInstance.destroy();
-                globeInstance = null;
-            }
-            return;
-        }
-
-        var maxCount = countries[0].count;
-        var cities = locations.cities || [];
-
-        globeMarkers = [];
-        globeMarkersData = [];
-
-        countries.forEach(function (c, idx) {
-            var coords = COUNTRY_COORDS[c.code];
-            if (coords) {
-                var countyCities = cities.filter(function(city) {
-                    return city.country === c.code;
-                });
-
-                globeMarkers.push({
-                    location: [coords[0], coords[1]],
-                    size: Math.max(0.015, (c.count / maxCount) * 0.03),
-                    id: 'marker-' + c.code
-                });
-
-                globeMarkersData.push({
-                    country: c.name,
-                    code: c.code,
-                    orders: c.count,
-                    total: c.total || '',
-                    lat: coords[0],
-                    lon: coords[1],
-                    cities: countyCities
-                });
-            }
-        });
-
-        createGlobeInstance();
+    // The time a frame of the globe covers, in seconds, from the previous one.
+    function globeStep(clock, now) {
+        var dt = clock.at ? Math.min(GLOBE_STEP_MAX, Math.max(0, now - clock.at)) : 1000 / 60;
+        clock.at = now;
+        return dt / 1000;
     }
 
     // Dragging turns whichever globe is on screen. Bound once per element and
@@ -3570,12 +3615,9 @@
             globeDrag.el = el;
             el.style.cursor = 'grabbing';
         });
-        el.addEventListener('wheel', function (e) {
-            e.preventDefault();
-            // Firefox can count the wheel in lines (deltaMode 1) or pages, not pixels.
-            var dy = e.deltaMode === 1 ? e.deltaY * 33 : (e.deltaMode === 2 ? e.deltaY * 600 : e.deltaY);
-            globeTheta += dy * 0.0005;
-        }, { passive: false });
+        // No wheel handler (3.3.50): the wheel tilted the globe and stopped the
+        // page from scrolling while the pointer crossed it, which read as the
+        // dashboard sticking. Dragging turns and tilts it.
         if (globeDrag.bound) return;
         globeDrag.bound = true;
         window.addEventListener('pointerup', function () {
@@ -3588,6 +3630,7 @@
             globeTheta += (e.clientY - globeDrag.y) * 0.005;
             globeDrag.x = e.clientX;
             globeDrag.y = e.clientY;
+            if (globeNudge) globeNudge();
         });
     }
 
@@ -3721,10 +3764,12 @@
         }
 
         // --- Adaptive quality tiers ---
+        // The first draws the globe at its own size (it drew 400 px and was
+        // stretched to the 450 px box: soft dots that shimmered as it turned).
         var tiers = [
-            { render: Math.min(size, 400), samples: 12000 },
-            { render: 300, samples: 8000 },
-            { render: 220, samples: 4000 }
+            { render: size, samples: 12000 },
+            { render: Math.min(size, 300), samples: 8000 },
+            { render: Math.min(size, 220), samples: 4000 }
         ];
 
         var quality = 'slow';
@@ -3732,10 +3777,14 @@
             if (globeInstance) { globeInstance.destroy(); globeInstance = null; }
             if (container) unwrapGlobeCanvas(container, canvas);
             quality = tryGlobeAtSize(canvas, size, tiers[ti].render, tiers[ti].samples, allArcs);
-            if (quality === 'fast') return;
+            if (quality === 'fast') {
+                globeShows = globeMarkSig();
+                return;
+            }
             if (quality === 'nogl') {
                 if (container) unwrapGlobeCanvas(container, canvas);
                 globeInstance = startLiteGlobe(container, canvas, size);
+                globeShows = globeMarkSig();
                 return;
             }
         }
@@ -3747,20 +3796,41 @@
         }
     }
 
-    function tryGlobeAtSize(canvas, displaySize, renderSize, samples, allArcs) {
-        // Use actual DPR so rendered pixels match screen pixels (no blurry upscaling)
-        var dpr = Math.min(window.devicePixelRatio || 1, 2);
-        var actualRender = Math.round(renderSize * dpr);
+    // Which countries the globe on the card shows, in their order (the first
+    // is the hub of the arcs). The same list with other counts only resizes
+    // the marks (updateGlobeMarks()); another list builds the globe again.
+    var globeShows = '';
+    function globeMarkSig() {
+        return globeMarkersData.map(function (d) { return d.code; }).join(',');
+    }
 
-        canvas.width = actualRender;
-        canvas.height = actualRender;
+    // New counts for the countries the WebGL globe already shows: the marks
+    // take their new sizes in place. Building the globe again compiled its
+    // shaders anew and played the labels in, a hitch on every quiet refresh
+    // of the Visitors tab, whose counts move with almost every visit.
+    function updateGlobeMarks() {
+        if (!globeInstance || globeInstance.lite || !globeShows || globeShows !== globeMarkSig()) return false;
+        globeInstance.update({ phi: globePhi, theta: globeTheta, markers: globeMarkers });
+        return true;
+    }
+
+    // Draws the WebGL globe once on the next frame, for a drag while no
+    // animation runs (reduced motion). Set by the globe on screen.
+    var globeNudge = null;
+
+    function tryGlobeAtSize(canvas, displaySize, renderSize, samples, allArcs) {
+        // cobe makes the drawing buffer width × devicePixelRatio itself. Given
+        // a width already multiplied by it, a 2x screen drew 1600 × 1600 for
+        // a 900 × 900 globe, four times the work on every frame (to 3.3.49).
+        var dpr = Math.min(window.devicePixelRatio || 1, 2);
+
         canvas.style.width = displaySize + 'px';
         canvas.style.height = displaySize + 'px';
 
         var globe = COBE.default(canvas, {
             devicePixelRatio: dpr,
-            width: actualRender,
-            height: actualRender,
+            width: renderSize,
+            height: renderSize,
             phi: globePhi,
             theta: globeTheta,
             dark: 0,
@@ -3806,9 +3876,23 @@
 
         var destroyed = false;
         var animFrame = null;
-        var rotationSpeed = prefersReducedMotion ? 0 : 0.003;
-        var arcTime = 0;
         var labels = null;
+        var clock = { at: 0 };
+        var arcClock = 0;
+        var arcAt = -1;
+        var heldAt = 0;
+        // The arcs, made once: their pulse rewrites the colours in place. cobe
+        // uploads the arcs again each time it is handed them, so they go along
+        // at most 20 times a second (every frame, to 3.3.49).
+        var pulseArcs = allArcs.map(function (arc) {
+            return { from: arc.from, to: arc.to, color: [0.3, 0.3, 0.3] };
+        });
+
+        // One frame drawn now: the labels follow.
+        function drawGlobe(opts) {
+            globe.update(opts || { phi: globePhi, theta: globeTheta });
+            if (labels) placeGlobeLabels(labels);
+        }
 
         // IntersectionObserver: pause when not visible
         globeVisible = true;
@@ -3817,51 +3901,74 @@
             observer = new IntersectionObserver(function (entries) {
                 var wasVisible = globeVisible;
                 globeVisible = entries[0].isIntersecting;
-                if (globeVisible && !wasVisible && !animFrame) animate();
+                if (globeVisible && !wasVisible && !animFrame) {
+                    // Reduced motion draws the globe once: the loop started
+                    // here (to 3.3.49) spun it and pulsed its arcs after all.
+                    if (prefersReducedMotion) drawGlobe();
+                    else animFrame = requestAnimationFrame(animate);
+                }
             }, { threshold: 0.1 });
             observer.observe(canvas);
         }
 
-        // Smooth rAF animation loop
-        function animate() {
-            if (destroyed || !globeVisible) { animFrame = null; return; }
+        // Smooth rAF animation loop, by time (GLOBE_TURN).
+        function animate(now) {
+            animFrame = null;
+            if (destroyed || !globeVisible) { clock.at = 0; return; }
+            if (typeof now !== 'number') now = performance.now();
+            var dt = globeStep(clock, now);
 
-            if (!globeDrag.down && !prefersReducedMotion) {
-                globePhi += rotationSpeed * globeSpin();
+            // Held still under the region map, which draws this very view over
+            // it: a frame every 100 ms is enough (the land texture can still
+            // be on its way), instead of drawing the same picture each frame.
+            if (globeHold && !globeDrag.down) {
+                if (now - heldAt >= 100) {
+                    heldAt = now;
+                    drawGlobe();
+                }
+                animFrame = requestAnimationFrame(animate);
+                return;
             }
-            arcTime += 0.016;
 
-            var pulsedArcs = allArcs.map(function (arc, idx) {
-                var b = globeArcGlow(idx, allArcs.length, arcTime);
-                return { from: arc.from, to: arc.to, color: [b, b, b] };
-            });
+            if (!globeDrag.down && !prefersReducedMotion) globeTurn(dt);
+            arcClock += dt;
 
-            globe.update({
-                phi: globePhi,
-                theta: globeTheta,
-                arcs: pulsedArcs
-            });
-
-            // A label shows while its country faces the viewer, worked out
-            // here like the drawn globe does: reading cobe's CSS properties
-            // back made the browser restyle the whole page on every frame.
-            if (labels) toggleGlobeLabels(labels);
+            var opts = { phi: globePhi, theta: globeTheta };
+            if (pulseArcs.length && arcClock - arcAt >= 0.05) {
+                arcAt = arcClock;
+                pulseArcs.forEach(function (arc, idx) {
+                    var b = globeArcGlow(idx, pulseArcs.length, arcClock);
+                    arc.color[0] = b;
+                    arc.color[1] = b;
+                    arc.color[2] = b;
+                });
+                opts.arcs = pulseArcs;
+            }
+            drawGlobe(opts);
 
             animFrame = requestAnimationFrame(animate);
         }
 
         if (prefersReducedMotion) {
-            globe.update({ phi: globePhi, theta: globeTheta });
+            drawGlobe();
             // No animation loop here: draw again while cobe's land texture
             // loads, or a globe rebuilt by a tab switch stayed bare (only the
             // first globe, started off screen, got the visibility redraw).
             [150, 500, 1200].forEach(function (ms) {
                 setTimeout(function () {
-                    if (!destroyed) globe.update({ phi: globePhi, theta: globeTheta });
+                    if (!destroyed) drawGlobe();
                 }, ms);
             });
+            // A drag draws it too (no loop runs to show the turn).
+            globeNudge = function () {
+                if (destroyed || animFrame) return;
+                animFrame = requestAnimationFrame(function () {
+                    animFrame = null;
+                    if (!destroyed) drawGlobe();
+                });
+            };
         } else if (globeVisible) {
-            animate();
+            animFrame = requestAnimationFrame(animate);
         }
 
         var origDestroy = globe.destroy;
@@ -3869,6 +3976,9 @@
             destroyed = true;
             if (animFrame) cancelAnimationFrame(animFrame);
             if (observer) observer.disconnect();
+            if (labels && labels.layer && labels.layer.parentNode) labels.layer.parentNode.removeChild(labels.layer);
+            globeNudge = null;
+            globeShows = '';
             origDestroy();
         };
 
@@ -3878,7 +3988,7 @@
         setTimeout(function () {
             if (destroyed) return;
             labels = setupGlobeLabels(canvas, displaySize);
-            toggleGlobeLabels(labels);
+            placeGlobeLabels(labels);
         }, 300);
 
         return 'fast';
@@ -3965,24 +4075,39 @@
     // already shown (Germany beside the United Kingdom). Worked out from the
     // globe's own projection, the drawn globe's arithmetic, never by measuring
     // the labels: reading them back restyled the whole page on every frame.
-    // list: [{ p: liteXYZ(...) }] in marker order; size: the globe in CSS px.
+    // The country whose row is pointed at (globeAim) goes first: its label
+    // shows, a neighbour's steps aside.
+    // list: [{ p: liteXYZ(...), code }] in marker order; size: the globe in CSS px.
     var GLOBE_TAG_W = 28, GLOBE_TAG_H = 18;
     function globeLabelsOn(list, size) {
         var sp = Math.sin(globePhi), cp = Math.cos(globePhi);
         var sn = Math.sin(globeTheta), cn = Math.cos(globeTheta);
         var R = (size || 400) * 0.4;
         var shown = [];
-        return list.map(function (l) {
-            var p = l.p;
-            if (-p[0] * sp * cn + p[1] * sn + p[2] * cp * cn <= 0.15) return false;
+        var order = list.map(function (l, i) { return i; });
+        if (globeAim) {
+            for (var a = 0; a < list.length; a++) {
+                if (list[a].code === globeAim.code) {
+                    order.splice(a, 1);
+                    order.unshift(a);
+                    break;
+                }
+            }
+        }
+        var out = [];
+        order.forEach(function (idx) {
+            var p = list[idx].p;
+            out[idx] = false;
+            if (-p[0] * sp * cn + p[1] * sn + p[2] * cp * cn <= 0.15) return;
             var x = (p[0] * cp + p[2] * sp) * R;
             var y = (p[0] * sp * sn + p[1] * cn - p[2] * cp * sn) * R;
             for (var i = 0; i < shown.length; i++) {
-                if (Math.abs(shown[i][0] - x) < GLOBE_TAG_W && Math.abs(shown[i][1] - y) < GLOBE_TAG_H) return false;
+                if (Math.abs(shown[i][0] - x) < GLOBE_TAG_W && Math.abs(shown[i][1] - y) < GLOBE_TAG_H) return;
             }
             shown.push([x, y]);
-            return true;
+            out[idx] = true;
         });
+        return out;
     }
 
     // A place on the globe, where cobe puts it.
@@ -4035,7 +4160,7 @@
 
         var marks = globeMarkers.map(function (m, k) {
             var data = globeMarkersData[k] || {};
-            var item = { p: liteXYZ(m.location, 1.02), r: Math.max(1.5 * dpr, m.size * R * 0.55), anchor: null, tag: null };
+            var item = { p: liteXYZ(m.location, 1.02), r: Math.max(1.5 * dpr, m.size * R * 0.55), anchor: null, tag: null, code: data.code || '', focus: false };
             if (data.code) {
                 item.anchor = document.createElement('div');
                 item.anchor.style.cssText = 'position:absolute;width:0;height:0;overflow:visible;pointer-events:none;';
@@ -4071,6 +4196,7 @@
         var frame = 0;
         var arcTime = 0;
         var visible = true;
+        var clock = { at: 0 };
 
         function draw() {
             var sp = Math.sin(globePhi), cp = Math.cos(globePhi);
@@ -4149,24 +4275,41 @@
                     m.anchor.style.left = ((half + mx * R) / px * 100) + '%';
                     m.anchor.style.top = ((half - my * R) / px * 100) + '%';
                     m.tag.classList.toggle('globe-code-tag--visible', tagsOn[k]);
+                    var aimed = tagsOn[k] && !!globeAim && globeAim.code === m.code;
+                    if (aimed !== m.focus) {
+                        m.focus = aimed;
+                        m.tag.classList.toggle('globe-code-tag--focus', aimed);
+                    }
                 }
             });
         }
 
-        function tick() {
+        // By time like the WebGL globe (GLOBE_TURN).
+        function tick(now) {
             frame = 0;
-            if (destroyed || !visible) return;
-            if (!globeDrag.down) globePhi += 0.003 * globeSpin();
-            arcTime += 0.016;
+            if (destroyed || !visible) { clock.at = 0; return; }
+            var dt = globeStep(clock, typeof now === 'number' ? now : performance.now());
+            if (!globeDrag.down) globeTurn(dt);
+            arcTime += dt;
             draw();
             frame = requestAnimationFrame(tick);
         }
 
-        // Reduced motion: drawn once, and again only while it is dragged.
+        // Reduced motion: drawn once, and again only while it is dragged or
+        // turned to a country whose row is pointed at (aimGlobeAt()).
         var onDrag = null;
+        var liteNudge = null;
         if (prefersReducedMotion) {
             onDrag = function () { if (globeDrag.down && globeDrag.el === c2) draw(); };
             window.addEventListener('pointermove', onDrag);
+            liteNudge = function () {
+                if (destroyed || frame) return;
+                frame = requestAnimationFrame(function () {
+                    frame = 0;
+                    if (!destroyed) draw();
+                });
+            };
+            globeNudge = liteNudge;
         }
 
         var io = null;
@@ -4190,6 +4333,7 @@
                 if (frame) cancelAnimationFrame(frame);
                 if (io) io.disconnect();
                 if (onDrag) window.removeEventListener('pointermove', onDrag);
+                if (liteNudge && globeNudge === liteNudge) globeNudge = null;
                 if (box.parentNode) box.parentNode.removeChild(box);
                 canvas.style.display = '';
             }
@@ -4206,40 +4350,73 @@
         wrapper.style.borderRadius = '50%';
     }
 
-    // The country code labels of the WebGL globe, in the anchors cobe moves
-    // with its markers: [{ tag, p (where on the globe), on }].
+    // The country code labels of the WebGL globe (3.3.50): a layer of their
+    // own over it, each label moved with a transform from the globe's own
+    // projection (the drawn globe's arithmetic, startLiteGlobe()). Until 3.3.49
+    // they sat in the anchors cobe keeps for markers that have an id: cobe
+    // moved those with left and top on every frame (a layout each frame) and
+    // wrote which ones faced the viewer into a :root <style>, which restyled
+    // the whole admin page each time a country turned towards or away. The
+    // markers have no id any more, so cobe keeps no anchors and no <style>.
+    // [{ pin, tag, p (where on the globe), on, x, y, off }]
     function setupGlobeLabels(canvas, size) {
         var wrapper = canvas.parentElement;
         var list = [];
         list.size = size; // for globeLabelsOn()
         if (!wrapper) return list;
         sizeGlobeBox(wrapper, size);
+        wrapper.style.position = 'relative';
 
+        var layer = document.createElement('div');
+        layer.className = 'globe-tag-layer';
+        layer.setAttribute('aria-hidden', 'true');
         globeMarkersData.forEach(function (data) {
-            var anchor = wrapper.querySelector('[style*="--cobe-marker-' + data.code + '"]');
-            if (!anchor) return;
-            anchor.style.overflow = 'visible';
-            anchor.style.width = '0';
-            anchor.style.height = '0';
+            if (!data.code) return;
+            var pin = document.createElement('span');
+            pin.className = 'globe-tag-pin';
             var tag = document.createElement('span');
             tag.className = 'globe-code-tag';
             tag.textContent = data.code;
-            anchor.appendChild(tag);
-            list.push({ tag: tag, p: liteXYZ([data.lat, data.lon], 1.02), on: false });
+            pin.appendChild(tag);
+            layer.appendChild(pin);
+            list.push({ pin: pin, tag: tag, p: liteXYZ([data.lat, data.lon], 1.02), code: data.code, on: false, focus: false, x: NaN, y: NaN, off: 0 });
         });
+        wrapper.appendChild(layer);
+        list.layer = layer;
         return list;
     }
 
     // Shows the labels whose country faces the viewer and has room (the
-    // drawn globe's rule, globeLabelsOn()).
-    function toggleGlobeLabels(list) {
+    // drawn globe's rule, globeLabelsOn()) and moves them with the globe. A
+    // label that went out keeps moving while it fades (0.35 s), then rests.
+    function placeGlobeLabels(list) {
+        if (!list.length) return;
         var shown = globeLabelsOn(list, list.size);
+        var half = list.size / 2;
+        var R = list.size * 0.4;
+        var sp = Math.sin(globePhi), cp = Math.cos(globePhi);
+        var sn = Math.sin(globeTheta), cn = Math.cos(globeTheta);
+        var now = performance.now();
         list.forEach(function (l, i) {
             var on = shown[i];
             if (on !== l.on) {
                 l.on = on;
+                if (!on) l.off = now;
                 l.tag.classList.toggle('globe-code-tag--visible', on);
             }
+            var aimed = on && !!globeAim && globeAim.code === l.code;
+            if (aimed !== l.focus) {
+                l.focus = aimed;
+                l.tag.classList.toggle('globe-code-tag--focus', aimed);
+            }
+            if (!on && now - l.off > 400) return;
+            var p = l.p;
+            var x = Math.round((half + (p[0] * cp + p[2] * sp) * R) * 10) / 10;
+            var y = Math.round((half - (p[0] * sp * sn + p[1] * cn - p[2] * cp * sn) * R) * 10) / 10;
+            if (x === l.x && y === l.y) return;
+            l.x = x;
+            l.y = y;
+            l.pin.style.transform = 'translate3d(' + x + 'px,' + y + 'px,0)';
         });
     }
 
@@ -4355,11 +4532,52 @@
     }
 
     // =========================================================================
-    // LOCATION VIEW TOGGLE
+    // LOCATIONS CARD (one card since 3.3.50)
+    // The globe or a country's region map beside the list of countries (or of
+    // that country's regions) and cities. The end of the head opens the
+    // busiest country that has a map, a row with a map icon its own country's;
+    // World and "‹ Countries" go back to the globe. Pointing at a country's
+    // row turns the globe to it. A map opened here is not remembered: after a
+    // reload a store selling in many countries is on the globe again (Salih,
+    // 13.11.2026). A store selling in one country opens on its own map as
+    // before (3.3.36), or on the globe when this user chose World.
     // =========================================================================
 
+    // The countries a region map can be drawn for (Brikpanel_Dashboard_Regions).
+    var REGION_MAP_CC = CFG.region_maps && Array.isArray(CFG.region_maps.cc) ? CFG.region_maps.cc : [];
+    var LOC_MAP_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false"><path d="M9 4 3.5 6v14L9 18l6 2 5.5-2V4L15 6 9 4z"/><path d="M9 4v14M15 6v14"/></svg>'; // i18n-ignore: icon markup, not text
+    var locCountries = [];        // the open tab's countries, as applyLocView() sorted them
+    var locMenuOpen = false;
+    var locMenuList = [];         // the countries of the head's menu
+    var regionFetching = {};      // region figures on their way, by regionKey()
+    var regionLast = {};          // the figures last shown for a country, while another period's come
+    var regionPrefetch = 0;       // a row pointed at: its figures and map file are fetched ahead
+    var aimTimer = 0;
+
+    function regionMapsOk() {
+        return !!(window.brikpanelRegionMap && CFG.maps_url && typeof window.Path2D === 'function');
+    }
+
+    function hasRegionMap(cc) {
+        return regionMapsOk() && /^[A-Z]{2}$/.test(cc || '') && REGION_MAP_CC.indexOf(cc) !== -1 && !regionFailed[cc];
+    }
+
+    // A country's name on the list: "United States (US)" is "United States".
+    // Only a code in brackets goes ("Congo (Kinshasa)" stays). On a button a
+    // long name gives way to its code ("Amerika Birleşik Devletleri (ABD)":
+    // "ABD"). The same rule as Brikpanel_Dashboard::loc_short_country().
+    var LOC_CODE_NAME = /^(.+?)\s*\((\p{Lu}{2,4})\)$/u;
+    function locName(name) {
+        var m = LOC_CODE_NAME.exec(String(name || ''));
+        return m ? m[1] : String(name || '');
+    }
+    function locShortName(name) {
+        var m = LOC_CODE_NAME.exec(String(name || ''));
+        if (!m) return String(name || '');
+        return m[1].length > 14 ? m[2] : m[1];
+    }
+
     function initLocTabs() {
-        // World | Country: the globe or the region map (stores selling in one country).
         var panel = document.getElementById('globe-panel');
         if (!panel) return;
         if (panel.getAttribute('data-loc-pref')) {
@@ -4370,11 +4588,76 @@
         var printed = panel.getAttribute('data-loc-view');
         if (printed === 'customers' || printed === 'visitors') locView = printed;
 
-        panel.querySelectorAll('.brikpanel-loc-mode-btn[data-mode]').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                setLocMode(this.getAttribute('data-mode'));
+        var head = panel.querySelector('.brikpanel-loc-mode');
+        var openBtn = head ? head.querySelector('.bp-loc-open') : null;
+        var worldBtn = head ? head.querySelector('.bp-loc-world') : null;
+        if (worldBtn) worldBtn.addEventListener('click', backToGlobe);
+        if (openBtn) {
+            // On the globe it opens its country's map; on a map it opens the
+            // menu of the other countries' maps (when there are any).
+            openBtn.addEventListener('click', function () {
+                if (this.getAttribute('aria-pressed') !== 'true') {
+                    openCountryMap(head.getAttribute('data-cc'));
+                } else if (this.hasAttribute('aria-haspopup')) {
+                    if (locMenuOpen) closeLocMenu(false); else openLocMenu('');
+                }
             });
-        });
+            openBtn.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape' && locMenuOpen) {
+                    e.preventDefault();
+                    closeLocMenu(true);
+                } else if ((e.key === 'ArrowDown' || e.key === 'ArrowUp') && this.hasAttribute('aria-haspopup')) {
+                    e.preventDefault();
+                    openLocMenu(e.key === 'ArrowUp' ? 'last' : 'first');
+                }
+            });
+            // Its map file fetched ahead while the pointer comes to it.
+            ['pointerenter', 'focus'].forEach(function (type) {
+                openBtn.addEventListener(type, function () {
+                    if (this.getAttribute('aria-pressed') !== 'true') prefetchCountryMap(head.getAttribute('data-cc'), 0);
+                });
+            });
+        }
+        var menu = document.getElementById('bp-loc-menu');
+        if (menu) {
+            menu.addEventListener('click', function (e) {
+                var item = e.target.closest('.bp-loc-menu-item[data-cc]');
+                if (!item) return;
+                closeLocMenu(true);
+                openCountryMap(item.getAttribute('data-cc'));
+            });
+            menu.addEventListener('keydown', locMenuKeys);
+        }
+        var back = panel.querySelector('.bp-loc-back');
+        if (back) back.addEventListener('click', backToGlobe);
+
+        // A country row: a click opens its map; pointing at it, with the
+        // mouse or the keyboard, turns the globe to it.
+        var list = document.getElementById('top-countries-table');
+        if (list) {
+            list.addEventListener('click', function (e) {
+                var row = e.target.closest('button.brikpanel-country-row[data-cc]');
+                if (row) openCountryMap(row.getAttribute('data-cc'));
+            });
+            list.addEventListener('pointerover', function (e) {
+                if (e.pointerType === 'touch') return;
+                var row = e.target.closest('.brikpanel-country-row[data-cc]');
+                if (!row) return;
+                aimGlobeAt(row.getAttribute('data-cc'));
+                if (row.tagName === 'BUTTON') prefetchCountryMap(row.getAttribute('data-cc'), 150);
+            });
+            list.addEventListener('pointerleave', function () {
+                clearTimeout(regionPrefetch);
+                aimGlobeAt(null);
+            });
+            list.addEventListener('focusin', function (e) {
+                var row = e.target.closest('.brikpanel-country-row[data-cc]');
+                if (row) aimGlobeAt(row.getAttribute('data-cc'));
+            });
+            list.addEventListener('focusout', function (e) {
+                if (!e.relatedTarget || !list.contains(e.relatedTarget)) aimGlobeAt(null);
+            });
+        }
 
         var tabs = panel.querySelectorAll('.brikpanel-loc-tab[data-view]');
         tabs.forEach(function (btn) {
@@ -4390,15 +4673,22 @@
                     t.setAttribute('aria-pressed', on ? 'true' : 'false');
                 });
                 saveTab('locations_view', view);
+                closeLocMenu(false);
+                // A map on its way stays away from Visitors (countries only).
+                if (view === 'visitors' && regionWant) {
+                    regionWant = '';
+                    setLocWait(false);
+                    announceLoc('');
+                }
 
                 if (!locationsData) return;
                 // Visitors are always on the world globe: a country's region
                 // map on the card flies back into it first. Leaving Visitors
-                // for that map comes from the globe, held still, the way the
-                // World | Country switch does it. The map choice stays saved.
+                // for that map comes from the globe, held still. The map the
+                // card showed stays chosen.
                 if (view === 'visitors' && regionMap && !regionMap.reversing) {
                     flyBackToGlobe();
-                } else if (prev === 'visitors' && locMode === 'region' && regionFocus()) {
+                } else if (prev === 'visitors' && regionShown()) {
                     regionAnimate = 'switch';
                     if (globeInstance && !prefersReducedMotion) globeHold = true;
                 }
@@ -4420,6 +4710,16 @@
         return 'o' + JSON.stringify(rest);
     }
 
+    // New figures for the card: the region figures fetched for other
+    // countries are dropped once the places of the orders moved (a new
+    // order, another period).
+    function noteLocations(locs) {
+        var sig = locSig(locs, 'orders');
+        if (sig === regionBlocksSig) return;
+        regionBlocksSig = sig;
+        regionBlocks = {};
+    }
+
     function applyLocView(view) {
         if (!locationsData) return;
         locationsSig = locSig(locationsData, view);
@@ -4434,11 +4734,12 @@
             countries = (vis && Array.isArray(vis.countries)) ? vis.countries.slice() : [];
             cities = [];
         } else {
-            // Sort copies by the active metric so globe hub + bar rankings reflect the chosen view.
+            // Sorted by the open tab's figure: the globe's hub and the list follow it.
             var sortByMetric = function (a, b) { return (b[countField] || 0) - (a[countField] || 0); };
             countries = (locationsData.countries || []).slice().sort(sortByMetric);
             cities    = (locationsData.cities    || []).slice().sort(sortByMetric);
         }
+        locCountries = countries;
 
         var maxVal = countries.length ? (countries[0][countField] || 0) : 0;
 
@@ -4451,10 +4752,11 @@
             if (!coords) return;
             var val = c[countField] || 0;
             var cCities = cities.filter(function (ci) { return ci.country === c.code; });
+            // No id: cobe would keep a DOM anchor for it, moved every frame
+            // (see setupGlobeLabels()).
             globeMarkers.push({
                 location: [coords[0], coords[1]],
-                size: Math.max(0.015, maxVal > 0 ? (val / maxVal) * 0.03 : 0.015),
-                id: 'marker-' + c.code
+                size: Math.max(0.015, maxVal > 0 ? (val / maxVal) * 0.03 : 0.015)
             });
             globeMarkersData.push({
                 country: c.name,
@@ -4472,36 +4774,43 @@
         var countriesTitle = document.getElementById('loc-panel-countries-title');
         var citiesTitle = document.getElementById('loc-panel-cities-title');
         var citiesWrap = document.getElementById('top-cities-table');
-        if (citiesTitle && !isVisitors) citiesTitle.textContent = view === 'customers' ? (i18n.loc_top_cities_customers || 'Top cities by customers') : (i18n.loc_top_cities_orders || 'Top cities by orders');
+        if (citiesTitle && !isVisitors) citiesTitle.textContent = view === 'customers' ? (i18n.loc_top_cities_customers || '') : (i18n.loc_top_cities_orders || '');
 
-        // A store selling in one country: its region map, its regions and
-        // its cities (each with its region, so "Merkez, Tokat" is not mixed
-        // with another province's Merkez). Visitors stay on the world globe.
-        var focus = regionFocus();
-        syncLocSwitch(focus);
-        if (focus && locMode === 'region' && !isVisitors) {
-            showRegionMap(focus, view);
-            if (countriesTitle) countriesTitle.textContent = regionListTitle(focus.word, view);
-            renderTopRegions(focus, view);
-            renderTopCities(cities.filter(function (c) { return c.country === focus.cc && c.region; }), view);
-            setLocFoot(focus);
-            if (citiesTitle) citiesTitle.hidden = false;
-            if (citiesWrap) citiesWrap.hidden = false;
+        // A country's region map: its regions and its cities (each with its
+        // region, so "Merkez, Tokat" is not mixed with another province's
+        // Merkez). Visitors stay on the world globe.
+        var shown = isVisitors ? null : regionShown();
+        syncLocHead(shown, countries);
+        renderLocSummary(shown, countries, view);
+        setLocBack(!!shown);
+        if (shown) {
+            showRegionMap(shown, view);
+            if (countriesTitle) countriesTitle.textContent = regionListTitle(shown.word, view);
+            renderTopRegions(shown, view);
+            var placeCities = cities.filter(function (c) { return c.country === shown.cc && c.region; });
+            renderTopCities(placeCities, view);
+            setLocFoot(shown);
+            // No city of that country among the store's busiest: no list.
+            if (citiesTitle) citiesTitle.hidden = !placeCities.length;
+            if (citiesWrap) citiesWrap.hidden = !placeCities.length;
             return;
         }
         setLocFoot(null, isVisitors ? (vis || {}) : null);
         if (regionMap && !regionMap.reversing) closeRegionMap();
-        // The country's map fetched ahead, so a switch to it is instant.
-        if (focus) preloadRegionMap(focus);
+        // The store's own map fetched ahead, so a switch to it is instant
+        // (others when their row or the head's button is pointed at).
+        var own = storeFocus();
+        if (own && !isVisitors) preloadRegionMap(own);
 
-        // Rebuild globe with new marker sizes (always recreate to update arc
-        // routing too). Nothing to place: the reason instead of a blank
+        // The globe with the new marks: the same countries in the same order
+        // only resize their marks, others build it again (the arcs start from
+        // the first country). Nothing to place: the reason instead of a blank
         // 450px box (field test F3). While the region map shrinks back into
         // the globe, the globe starts when it is done (flyBackToGlobe()).
         if (!regionMap) {
             if (globeMarkers.length > 0) {
                 setGlobeEmpty(null);
-                createGlobeInstance();
+                if (!updateGlobeMarks()) createGlobeInstance();
             } else {
                 setGlobeEmpty(isVisitors ? visitorsEmpty(vis) : emptyReason('orders', 'site'));
             }
@@ -4510,7 +4819,7 @@
         if (countriesTitle) {
             countriesTitle.textContent = isVisitors
                 ? (i18n.loc_top_countries_visitors || '')
-                : (view === 'customers' ? (i18n.loc_top_countries_customers || 'Top countries by customers') : (i18n.loc_top_countries_orders || 'Top countries by orders'));
+                : (view === 'customers' ? (i18n.loc_top_countries_customers || '') : (i18n.loc_top_countries_orders || ''));
         }
 
         renderTopCountries(countries, view);
@@ -4532,27 +4841,452 @@
         return emptyReason('visits', null, fallback);
     }
 
-    // The region map block of the payload when this page can draw it.
-    function regionFocus() {
+    // The store's own region map (a store selling in one country, 3.3.36),
+    // from the dashboard's data, when this page can draw it.
+    function storeFocus() {
         var f = locationsData && locationsData.focus;
-        if (!f || !window.brikpanelRegionMap || !CFG.maps_url || typeof window.Path2D !== 'function') return null;
-        if (!/^[A-Z]{2}$/.test(f.cc || '') || regionFailed[f.cc]) return null;
+        if (!f || !regionMapsOk() || !/^[A-Z]{2}$/.test(f.cc || '') || regionFailed[f.cc]) return null;
         return f;
     }
 
-    // World | Country shows only when the store has a region map, and never
-    // on the Visitors tab (always the world globe).
-    function syncLocSwitch(focus) {
-        var modeRow = document.querySelector('.brikpanel-loc-mode');
-        if (!modeRow) return;
-        modeRow.hidden = !focus || locView === 'visitors';
-        if (!focus) return;
-        var name = modeRow.querySelector('.brikpanel-loc-mode-country');
-        if (name && name.textContent !== focus.country) name.textContent = focus.country;
-        modeRow.setAttribute('data-cc', focus.cc);
-        modeRow.querySelectorAll('.brikpanel-loc-mode-btn[data-mode]').forEach(function (b) {
-            b.setAttribute('aria-pressed', b.getAttribute('data-mode') === locMode ? 'true' : 'false');
+    // The map the card shows: the country opened here (its figures for this
+    // period, the last ones while those come), else the store's own. Null
+    // for the globe.
+    function regionShown() {
+        if (locMode !== 'region' || !regionMapsOk()) return null;
+        if (regionPick) {
+            if (!hasRegionMap(regionPick)) {
+                regionPick = null;
+                locMode = 'world';
+                return null;
+            }
+            return pickedBlock(regionPick);
+        }
+        return storeFocus();
+    }
+
+    // The figures of a country's map are for one period.
+    function regionKey(cc) {
+        return cc + '|' + currentRange + (currentRange === 'custom' ? '|' + customStartDate + '|' + customEndDate : '');
+    }
+
+    function pickedBlock(cc) {
+        var key = regionKey(cc);
+        var b = regionBlocks[key];
+        if (b) {
+            regionLast[cc] = b;
+            return b;
+        }
+        if (!regionFetching[key]) {
+            loadRegionBlock(cc).then(function () {
+                if (regionPick === cc && locMode === 'region') applyLocView(locView);
+            }, function () {
+                if (regionPick !== cc) return;
+                // Its figures for the new period did not come: the globe.
+                regionPick = null;
+                locMode = 'world';
+                if (regionMap && !regionMap.reversing) flyBackToGlobe();
+                applyLocView(locView);
+                showToast(i18n.loc_map_error, 'error');
+            });
+        }
+        return regionLast[cc] || null;
+    }
+
+    // One country's region figures for the period on screen
+    // (brikpanel_dash_regions: the payload's focus block, for any country).
+    function loadRegionBlock(cc) {
+        var key = regionKey(cc);
+        if (regionBlocks[key]) return Promise.resolve(regionBlocks[key]);
+        if (regionFetching[key]) return regionFetching[key];
+        var fd = new FormData();
+        fd.append('action', 'brikpanel_dash_regions');
+        fd.append('security', CFG.nonce || '');
+        fd.append('cc', cc);
+        fd.append('range', currentRange);
+        if (currentRange === 'custom') {
+            fd.append('start_date', customStartDate);
+            fd.append('end_date', customEndDate);
+        }
+        var sig = regionBlocksSig;
+        var p = fetch(CFG.ajax_url, { method: 'POST', body: fd, credentials: 'same-origin' })
+            .then(function (r) { return r.json(); })
+            .then(function (res) {
+                var b = res && res.success ? res.data : null;
+                if (!b || b.cc !== cc || !Array.isArray(b.regions)) throw new Error('regions');
+                delete regionFetching[key];
+                // Figures asked for before the places moved are not kept.
+                if (sig === regionBlocksSig) regionBlocks[key] = b;
+                return b;
+            })
+            .catch(function (err) {
+                delete regionFetching[key];
+                throw err;
+            });
+        regionFetching[key] = p;
+        return p;
+    }
+
+    // A row with a map pointed at for a moment: its figures and its map file
+    // come ahead, so a click flies at once.
+    function prefetchCountryMap(cc, wait) {
+        clearTimeout(regionPrefetch);
+        if (!hasRegionMap(cc) || locView === 'visitors') return;
+        regionPrefetch = setTimeout(function () {
+            var own = storeFocus();
+            if (!own || own.cc !== cc) loadRegionBlock(cc).catch(function () {});
+            preloadRegionMap({ cc: cc, v: (CFG.region_maps && CFG.region_maps.v) || '' });
+        }, wait || 0);
+    }
+
+    // A country's map on the card. From the globe it flies in, the globe
+    // turned to the country while its figures and map file come; from another
+    // country's map it flies out into the globe and on into this one.
+    function openCountryMap(cc) {
+        if (!locationsData || locView === 'visitors' || !hasRegionMap(cc)) return;
+        var own = storeFocus();
+        var isOwn = !!own && own.cc === cc;
+        var current = regionShown();
+        if (current && current.cc === cc && (!regionMap || !regionMap.reversing)) return;
+        regionWant = cc;
+        aimGlobeAt(cc);
+        setLocWait(true);
+        announceLoc(i18n.loc_map_loading || '');
+        (isOwn ? Promise.resolve(own) : loadRegionBlock(cc)).then(function (b) {
+            return window.brikpanelRegionMap.preload(CFG.maps_url, cc, b.v).then(function () { return b; });
+        }).then(function (b) {
+            if (regionWant !== cc) return;
+            regionWant = '';
+            setLocWait(false);
+            startCountryMap(cc, isOwn ? null : b);
+        }, function () {
+            if (regionWant !== cc) return;
+            regionWant = '';
+            setLocWait(false);
+            aimGlobeAt(null);
+            announceLoc('');
+            showToast(i18n.loc_map_error, 'error');
         });
+    }
+
+    // block: the figures of a country that is not the store's own (null: its own map).
+    function startCountryMap(cc, block) {
+        var fromMap = !!regionMap && !regionMap.reversing;
+        clearTimeout(aimTimer);
+        globeAim = null;
+        regionPick = block ? cc : null;
+        if (block) regionLast[cc] = block;
+        // The store's own map is remembered (3.3.36), the others not.
+        if (!block) saveTab('locations', 'region');
+        locMode = 'region';
+        var keepFocus = locFocusInList();
+        if (fromMap) {
+            // Out into the globe and on into the next map, which flies in
+            // from the globe as the last one left it. The list and the head
+            // change at once.
+            var rm = regionMap;
+            rm.reversing = true;
+            rm.ctl.reverse(function (phi, theta) {
+                if (regionMap !== rm) return;
+                if (phi !== null) {
+                    globePhi = phi;
+                    globeTheta = theta;
+                }
+                closeRegionMap(300);
+                regionAnimate = 'switch';
+                applyLocView(locView);
+            });
+        } else {
+            regionAnimate = 'switch';
+            // The globe holds still: the map starts from this very view.
+            if (globeInstance && !prefersReducedMotion) globeHold = true;
+        }
+        applyLocView(locView);
+        if (keepFocus) focusLoc('.bp-loc-back');
+        var name = locShortName(block ? block.country : (storeFocus() || {}).country);
+        announceLoc(name ? fillText(i18n.loc_view_map || '%s', name) : '');
+    }
+
+    // World and "‹ Countries": back to the globe.
+    function backToGlobe() {
+        closeLocMenu(false);
+        regionWant = '';
+        setLocWait(false);
+        if (locMode === 'world' && !regionMap) return;
+        // Leaving the store's own map for the globe is remembered (3.3.36).
+        if (!regionPick && storeFocus()) saveTab('locations', 'world');
+        var keepFocus = locFocusInList() || !!(document.activeElement && document.activeElement.closest && document.activeElement.closest('.bp-loc-world'));
+        regionPick = null;
+        locMode = 'world';
+        if (regionMap && !regionMap.reversing) flyBackToGlobe();
+        applyLocView(locView);
+        announceLoc('');
+        if (keepFocus) focusLoc('.brikpanel-loc-mode .bp-loc-open');
+    }
+
+    // Whether the keyboard focus is on a part of the card that a switch
+    // between the globe and a map takes away (a row, World, "‹ Countries").
+    function locFocusInList() {
+        var a = document.activeElement;
+        if (!a || !a.closest) return false;
+        return !!a.closest('#top-countries-table, .bp-loc-back');
+    }
+
+    function focusLoc(selector) {
+        var el = document.querySelector('#globe-panel ' + selector);
+        if (el && !el.hidden && !el.closest('[hidden]')) el.focus();
+    }
+
+    function setLocWait(on) {
+        var panel = document.getElementById('globe-panel');
+        if (!panel) return;
+        panel.classList.toggle('bp-loc-wait', !!on);
+        if (on) panel.setAttribute('aria-busy', 'true'); else panel.removeAttribute('aria-busy');
+    }
+
+    function announceLoc(text) {
+        var live = document.getElementById('bp-loc-live');
+        if (live && live.textContent !== text) live.textContent = text;
+    }
+
+    // The globe turns to a country while its row is pointed at, and the
+    // country's code stands out on it; let go, it spins on (gently,
+    // globeSpin()). Nothing happens over a map.
+    function aimGlobeAt(cc) {
+        clearTimeout(aimTimer);
+        if (!cc) {
+            if (!globeAim) return;
+            // Going from row to row crosses the gaps between them: a moment first.
+            aimTimer = setTimeout(function () {
+                globeAim = null;
+                globeSpinAt = performance.now();
+                if (globeNudge) globeNudge();
+            }, 160);
+            return;
+        }
+        if (regionMap || !globeInstance) return;
+        var coords = COUNTRY_COORDS[cc];
+        if (!coords) return;
+        // Facing the viewer: phi = -90° - longitude, theta = latitude (cobe),
+        // tilted no further than 34°.
+        globeAim = {
+            code: cc,
+            phi: -Math.PI / 2 - coords[1] * Math.PI / 180,
+            theta: Math.max(-0.6, Math.min(0.6, coords[0] * Math.PI / 180))
+        };
+        if (prefersReducedMotion) {
+            globePhi = globeAim.phi;
+            globeTheta = globeAim.theta;
+            if (globeNudge) globeNudge();
+        }
+    }
+
+    // One frame's turn of the globe: its spin or, while a row is pointed at,
+    // the short way round to that country, eased.
+    function globeTurn(dt) {
+        if (globeHold) return;
+        if (!globeAim) {
+            globePhi += GLOBE_TURN * dt * globeSpin();
+            return;
+        }
+        var k = 1 - Math.exp(-dt * 5);
+        var d = globeAim.phi - globePhi;
+        d = ((d + Math.PI) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI) - Math.PI;
+        globePhi += d * k;
+        globeTheta += (globeAim.theta - globeTheta) * k;
+    }
+
+    // The end of the card's head. On the globe: "<flag> <country> map", the
+    // busiest country of the open tab that has a map. On a map: World, and
+    // the country, dark, which opens the menu of the other countries' maps
+    // when there are any. Neither on Visitors (no regions) nor when no
+    // country of the list has a map.
+    function syncLocHead(shown, countries) {
+        var row = document.querySelector('.brikpanel-loc-mode');
+        if (!row) return;
+        var btn = row.querySelector('.bp-loc-open');
+        var world = row.querySelector('.bp-loc-world');
+        var maps = locMapCountries(countries, shown);
+        locMenuList = maps;
+        var top = shown ? { code: shown.cc, name: shown.country } : (maps[0] || null);
+        if (locView === 'visitors' || !top || !btn || !world) {
+            closeLocMenu(false);
+            row.hidden = true;
+            return;
+        }
+        var name = locShortName(top.name);
+        var label = shown ? name : fillText(i18n.loc_view_map || '%s', name);
+        var text = btn.querySelector('.brikpanel-loc-mode-country');
+        if (text && text.textContent !== label) text.textContent = label;
+        var flag = btn.querySelector('.bp-loc-flag');
+        if (flag && flag.getAttribute('data-cc') !== top.code) {
+            flag.innerHTML = countryFlag(top.code);
+            flag.setAttribute('data-cc', top.code);
+        }
+        btn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+        var others = shown ? maps.some(function (c) { return c.code !== shown.cc; }) : false;
+        if (others) {
+            btn.setAttribute('aria-haspopup', 'menu');
+            btn.setAttribute('aria-controls', 'bp-loc-menu');
+            btn.setAttribute('aria-expanded', locMenuOpen ? 'true' : 'false');
+        } else {
+            closeLocMenu(false);
+            btn.removeAttribute('aria-haspopup');
+            btn.removeAttribute('aria-controls');
+            btn.removeAttribute('aria-expanded');
+        }
+        world.hidden = !shown;
+        row.setAttribute('data-cc', top.code);
+        row.hidden = false;
+        if (locMenuOpen) renderLocMenu();
+    }
+
+    // The countries of the list whose map can open, in its order; the one on
+    // the card first when the list has not got it (no order in this period).
+    function locMapCountries(countries, shown) {
+        var out = (countries || []).filter(function (c) { return hasRegionMap(c.code); });
+        if (shown && !out.some(function (c) { return c.code === shown.cc; })) {
+            out.unshift({ code: shown.cc, name: shown.country });
+        }
+        return out;
+    }
+
+    function renderLocMenu() {
+        var menu = document.getElementById('bp-loc-menu');
+        var row = document.querySelector('.brikpanel-loc-mode');
+        if (!menu || !row) return;
+        var field = locView === 'customers' ? 'customers' : 'count';
+        var current = row.getAttribute('data-cc');
+        // Drawn again while open (new figures): the focus stays on its country.
+        var had = document.activeElement && menu.contains(document.activeElement) ? document.activeElement.getAttribute('data-cc') : '';
+        var html = '';
+        locMenuList.forEach(function (c) {
+            html += '<button type="button" class="bp-loc-menu-item" role="menuitemradio" tabindex="-1" data-cc="' + c.code + '" aria-checked="' + (c.code === current ? 'true' : 'false') + '">' +
+                '<span class="bp-loc-flag" aria-hidden="true">' + countryFlag(c.code) + '</span>' +
+                '<span class="bp-loc-menu-name">' + escapeHtml(locName(c.name)) + '</span>' +
+                (c[field] != null ? '<small>' + escapeHtml(formatNumber(c[field] || 0)) + '</small>' : '') +
+            '</button>';
+        });
+        menu.innerHTML = html;
+        if (had) {
+            var again = menu.querySelector('.bp-loc-menu-item[data-cc="' + had + '"]') || menu.querySelector('.bp-loc-menu-item');
+            if (again) again.focus();
+        }
+    }
+
+    // which: 'first' or 'last' item focused (arrow keys), else the country on the card.
+    function openLocMenu(which) {
+        var menu = document.getElementById('bp-loc-menu');
+        var btn = document.querySelector('.brikpanel-loc-mode .bp-loc-open');
+        if (!menu || !btn || !btn.hasAttribute('aria-haspopup')) return;
+        renderLocMenu();
+        menu.hidden = false;
+        locMenuOpen = true;
+        btn.setAttribute('aria-expanded', 'true');
+        if (window.brikpanelTip && window.brikpanelTip.nudge) window.brikpanelTip.nudge(menu, document.getElementById('globe-panel'));
+        var items = menu.querySelectorAll('.bp-loc-menu-item');
+        var pick = which === 'first' ? items[0] : (which === 'last' ? items[items.length - 1] : (menu.querySelector('.bp-loc-menu-item[aria-checked="true"]') || items[0]));
+        if (pick) pick.focus();
+        document.addEventListener('pointerdown', locMenuOutside, true);
+    }
+
+    function closeLocMenu(focusBack) {
+        if (!locMenuOpen) return;
+        locMenuOpen = false;
+        var menu = document.getElementById('bp-loc-menu');
+        var btn = document.querySelector('.brikpanel-loc-mode .bp-loc-open');
+        if (menu) {
+            menu.hidden = true;
+            menu.style.translate = '';
+        }
+        if (btn && btn.hasAttribute('aria-haspopup')) btn.setAttribute('aria-expanded', 'false');
+        document.removeEventListener('pointerdown', locMenuOutside, true);
+        if (focusBack && btn) btn.focus();
+    }
+
+    function locMenuOutside(e) {
+        var row = document.querySelector('.brikpanel-loc-mode');
+        // The country button opens and closes it itself.
+        if (row && row.contains(e.target)) return;
+        closeLocMenu(false);
+    }
+
+    function locMenuKeys(e) {
+        var items = Array.prototype.slice.call(this.querySelectorAll('.bp-loc-menu-item'));
+        var i = items.indexOf(document.activeElement);
+        if (e.key === 'Escape') {
+            e.preventDefault();
+            e.stopPropagation();
+            closeLocMenu(true);
+            return;
+        }
+        if (e.key === 'Tab') {
+            closeLocMenu(false);
+            return;
+        }
+        var next = -1;
+        if (e.key === 'ArrowDown') next = i < items.length - 1 ? i + 1 : 0;
+        else if (e.key === 'ArrowUp') next = i > 0 ? i - 1 : items.length - 1;
+        else if (e.key === 'Home') next = 0;
+        else if (e.key === 'End') next = items.length - 1;
+        if (next >= 0 && items[next]) {
+            e.preventDefault();
+            items[next].focus();
+        }
+    }
+
+    // "‹ Countries" over a map's list.
+    function setLocBack(on) {
+        var back = document.querySelector('#globe-panel .bp-loc-back');
+        if (back) back.hidden = !on;
+    }
+
+    // Over the list: how many places the open tab counts and the busiest
+    // with its share, "13 countries · Most orders: United States (52%)". On a
+    // map the country's regions and the share of its orders.
+    function renderLocSummary(shown, countries, view) {
+        var box = document.getElementById('bp-loc-summary');
+        if (!box) return;
+        var big = box.querySelector('.bp-loc-big');
+        var sub = box.querySelector('.bp-loc-sub');
+        var isVisitors = view === 'visitors';
+        var isCustomers = view === 'customers';
+        var field = isVisitors ? 'visitors' : (isCustomers ? 'customers' : 'count');
+        var sum = function (list) { return list.reduce(function (t, x) { return t + (Number(x[field]) || 0); }, 0); };
+        var places, msg, name = '', all;
+        if (shown) {
+            places = (shown.regions || []).filter(function (r) { return (r[field] || 0) > 0; })
+                .sort(function (a, b) { return (b[field] || 0) - (a[field] || 0); });
+            var w = shown.word === 'province' || shown.word === 'state' ? shown.word : 'region';
+            msg = i18n['loc_n_' + w + 's'];
+            if (places.length) name = (shown.names && shown.names[places[0].key]) || places[0].key;
+            // The country's orders, with those no region was found for.
+            all = isCustomers ? sum(places) : Math.max(sum(places), Number(shown.orders) || 0);
+        } else {
+            places = (countries || []).filter(function (c) { return (c[field] || 0) > 0; });
+            msg = i18n.loc_n_countries;
+            if (places.length) name = locName(places[0].name);
+            all = isVisitors ? (Number((locationsData.visitors || {}).total) || 0) : sum(places);
+        }
+        var pattern = i18n[isVisitors ? 'loc_most_visitors' : (isCustomers ? 'loc_most_customers' : 'loc_most_orders')];
+        if (!places.length || !BF || !msg || !pattern || !big || !sub) {
+            box.hidden = true;
+            return;
+        }
+        big.textContent = BF.count(msg, places.length);
+        // "Most orders: <b>United States</b> (52%)": the name stands out.
+        var share = all > 0 ? fmtPct((Number(places[0][field]) || 0) / all * 100, 0) : '';
+        while (sub.firstChild) sub.removeChild(sub.firstChild);
+        String(pattern).split(/(%[12]\$s)/).forEach(function (part) {
+            if (part === '%1$s') {
+                var b = document.createElement('b');
+                b.textContent = name;
+                sub.appendChild(b);
+            } else if (part !== '') {
+                sub.appendChild(document.createTextNode(part === '%2$s' ? share : part));
+            }
+        });
+        box.hidden = false;
     }
 
     // The region map flies back into the globe facing the country. The world
@@ -4578,22 +5312,6 @@
                 globeSpinAt = performance.now();
             }, 430);
         });
-    }
-
-    function setLocMode(mode) {
-        mode = mode === 'world' ? 'world' : 'region';
-        if (mode === locMode) return;
-        locMode = mode;
-        saveTab('locations', mode);
-        if (!locationsData) return;
-        if (mode === 'world' && regionMap) {
-            flyBackToGlobe();
-        } else if (mode === 'region') {
-            regionAnimate = 'switch';
-            // The globe holds still: the map starts from this very view.
-            if (globeInstance && !prefersReducedMotion) globeHold = true;
-        }
-        applyLocView(locView);
     }
 
     function preloadRegionMap(focus) {
@@ -4627,6 +5345,9 @@
             regionMap.ctl.update(focus, view);
             return;
         }
+        // The last map is flying out into the globe: this one flies in when
+        // it is out (startCountryMap(), flyBackToGlobe()).
+        if (regionMap && regionMap.reversing) return;
         closeRegionMap();
         var how = regionAnimate;
         regionAnimate = false;
@@ -4668,6 +5389,7 @@
             if (regionMap === rm) {
                 closeRegionMap();
                 applyLocView(locView);
+                showToast(i18n.loc_map_error, 'error');
             }
         });
     }
@@ -4695,35 +5417,39 @@
         return i18n[key] || '';
     }
 
-    // The busiest regions, like the countries list (bars, sales), without flags.
+    // One row of the list: rank, flag, name, the figure over its count, the
+    // map icon (a country with a map), the bar under the name.
+    function locRow(rank, flag, name, big, small, icon, pct) {
+        return '<span class="bp-loc-rank">' + rank + '</span>' +
+            '<span class="country-flag" aria-hidden="true">' + flag + '</span>' +
+            '<span class="country-name">' + escapeHtml(name) + '</span>' +
+            '<span class="bp-loc-val">' +
+                (big !== '' ? '<span class="country-total">' + escapeHtml(big) + '</span>' : '') +
+                (small !== '' ? '<span class="country-meta">' + escapeHtml(small) + '</span>' : '') +
+            '</span>' +
+            '<span class="bp-loc-mapicon" aria-hidden="true">' + icon + '</span>' +
+            '<span class="country-bar-wrap" aria-hidden="true"><span class="country-bar" style="width:' + pct + '%"></span></span>';
+    }
+
+    // The busiest regions of the country on the map, like the countries.
     function renderTopRegions(focus, view) {
         var wrap = document.getElementById('top-countries-table');
         if (!wrap) return;
         var isCustomers = view === 'customers';
         var field = isCustomers ? 'customers' : 'count';
-        var rows = (focus.regions || []).slice().sort(function (a, b) { return (b[field] || 0) - (a[field] || 0); })
-            .filter(function (r) { return (r[field] || 0) > 0; });
+        var rows = (focus.regions || []).filter(function (r) { return (r[field] || 0) > 0; })
+            .sort(function (a, b) { return (b[field] || 0) - (a[field] || 0); });
         if (!rows.length) {
             showEmpty(wrap, emptyReason('orders', 'site'));
             return;
         }
         var max = rows[0][field] || 1;
         var html = '<div class="brikpanel-country-list brikpanel-region-list">';
-        rows.slice(0, 5).forEach(function (r) {
-            var val = r[field] || 0;
+        rows.slice(0, 5).forEach(function (r, i) {
             var name = (focus.names && focus.names[r.key]) || r.key;
-            html += '<div class="brikpanel-country-row">' +
-                '<div class="country-info">' +
-                    '<div class="country-header">' +
-                        '<span class="country-name">' + escapeHtml(name) + '</span>' +
-                        (!isCustomers ? '<span class="country-total">' + escapeHtml(r.total || '') + '</span>' : '') +
-                    '</div>' +
-                    '<div class="country-bar-wrap">' +
-                        '<div class="country-bar" style="width:' + Math.max(1, Math.round(val / max * 100)) + '%"></div>' +
-                    '</div>' +
-                    '<div class="country-meta">' + escapeHtml(locCountLine(isCustomers ? 'customers' : 'orders', r)) + '</div>' +
-                '</div>' +
-            '</div>';
+            var big = isCustomers ? locCountLine('customers', r) : (r.total || '');
+            var small = isCustomers ? '' : locCountLine('orders', r);
+            html += '<div class="brikpanel-country-row">' + locRow(i + 1, '', name, big, small, '', Math.max(1, Math.round((r[field] || 0) / max * 100))) + '</div>';
         });
         html += '</div>';
         wrap.innerHTML = html;
@@ -4731,23 +5457,29 @@
 
     // Under the map: the orders no region was found for, and the colour scale.
     // Under the Visitors globe (vis, 3.3.40): the visitors no country was found
-    // for, and from when countries are counted when the period starts earlier.
+    // for, and from when countries are counted when the period starts earlier;
+    // at its end, while countries are shown, DB-IP's link (3.3.51), whose free
+    // list they come from. Orders and Customers take theirs from addresses.
     function setLocFoot(focus, vis) {
         var panel = document.getElementById('globe-panel');
         var foot = panel ? panel.querySelector('.brikpanel-loc-foot') : null;
         if (!foot) return;
         var legend = foot.querySelector('.brikpanel-loc-legend');
+        var credit = foot.querySelector('.brikpanel-loc-credit');
         if (vis) {
             var parts = [];
             var unknown = Number(vis.unknown) || 0;
+            var shown = (vis.countries || []).length > 0;
             if (unknown > 0 && BF && i18n.loc_unknown_visitors) parts.push(BF.count(i18n.loc_unknown_visitors, unknown));
-            if (vis.since_label && i18n.loc_counted_since && (vis.countries || []).length) parts.push(fillText(i18n.loc_counted_since, String(vis.since_label)));
+            if (vis.since_label && i18n.loc_counted_since && shown) parts.push(fillText(i18n.loc_counted_since, String(vis.since_label)));
             var vnote = foot.querySelector('.brikpanel-loc-unknown');
             if (vnote) vnote.textContent = parts.join(' · ');
             if (legend) legend.hidden = true;
-            foot.hidden = !parts.length;
+            if (credit) credit.hidden = !shown;
+            foot.hidden = !parts.length && !shown;
             return;
         }
+        if (credit) credit.hidden = true;
         if (legend) legend.hidden = false;
         foot.hidden = !focus;
         if (!focus) return;
@@ -4769,6 +5501,7 @@
             : BF.count(i18n.camp_orders, Number(c.count) || 0);
     }
 
+    // The countries: a country with a map is a button that opens it.
     function renderTopCountries(countries, view) {
         var wrap = document.getElementById('top-countries-table');
         if (!wrap) return;
@@ -4788,32 +5521,32 @@
         countries.forEach(function (c) { if ((c[countField] || 0) > maxCount) maxCount = c[countField] || 0; });
 
         var html = '<div class="brikpanel-country-list">';
-
-        countries.slice(0, isVisitors ? LOC_VISITOR_ROWS : 5).forEach(function (c) {
+        countries.slice(0, isVisitors ? LOC_VISITOR_ROWS : 5).forEach(function (c, i) {
             var val = c[countField] || 0;
             var pct = maxCount > 0 ? Math.round((val / maxCount) * 100) : 0;
-            var right = isVisitors
-                ? (allVisitors > 0 ? fmtPct(val / allVisitors * 100, 0) : '')
-                : (isCustomers ? '' : (c.total || ''));
-            html += '<div class="brikpanel-country-row">' +
-                '<div class="country-flag">' + countryFlag(c.code) + '</div>' +
-                '<div class="country-info">' +
-                    '<div class="country-header">' +
-                        '<span class="country-name">' + escapeHtml(c.name) + '</span>' +
-                        (right !== '' ? '<span class="country-total">' + escapeHtml(right) + '</span>' : '') +
-                    '</div>' +
-                    '<div class="country-bar-wrap">' +
-                        '<div class="country-bar" style="width:' + pct + '%"></div>' +
-                    '</div>' +
-                    '<div class="country-meta">' + escapeHtml(locCountLine(view, c)) + '</div>' +
-                '</div>' +
-            '</div>';
+            var big, small;
+            if (isVisitors) {
+                big = allVisitors > 0 ? fmtPct(val / allVisitors * 100, 0) : '';
+                small = locCountLine(view, c);
+            } else if (isCustomers) {
+                big = locCountLine('customers', c);
+                small = '';
+            } else {
+                big = c.total || '';
+                small = locCountLine('orders', c);
+            }
+            var map = !isVisitors && hasRegionMap(c.code);
+            var inner = locRow(i + 1, countryFlag(c.code), locName(c.name), big, small, map ? LOC_MAP_ICON : '', pct);
+            html += map
+                ? '<button type="button" class="brikpanel-country-row" data-cc="' + c.code + '" title="' + escapeHtml(i18n.loc_open_map || '') + '">' + inner + '</button>'
+                : '<div class="brikpanel-country-row" data-cc="' + escapeHtml(String(c.code || '')) + '">' + inner + '</div>';
         });
 
         html += '</div>';
         wrap.innerHTML = html;
     }
 
+    // The busiest cities: name and count (orders or customers, as the title says).
     function renderTopCities(cities, view) {
         var wrap = document.getElementById('top-cities-table');
         if (!wrap) return;
@@ -4823,26 +5556,15 @@
             return;
         }
 
-        var isCustomers = view === 'customers';
-        var countField  = isCustomers ? 'customers' : 'count';
-        var unitLabel   = isCustomers ? (i18n.loc_customers || 'Customers') : (i18n.loc_orders || 'Orders');
-
-        var html = '<table class="brikpanel-dash-table"><thead><tr>' +
-            '<th>#</th><th>' + (i18n.city || 'City') + '</th><th>' + unitLabel + '</th>' +
-            '</tr></thead><tbody>';
-
-        cities.slice(0, 5).forEach(function (c, i) {
+        var countField = view === 'customers' ? 'customers' : 'count';
+        var html = '<ol class="bp-loc-cities">';
+        cities.slice(0, 5).forEach(function (c) {
             // "Merkez, Tokat", "Springfield, IL" (the server writes it in the
             // admin's language); a payload cached before cities carried their
             // region has the name only.
-            html += '<tr><td class="rank">' + (i + 1) + '</td>' +
-                '<td>' + escapeHtml(c.label || c.name) + '</td>' +
-                '<td>' + formatNumber(c[countField] || 0) + '</td></tr>';
+            html += '<li><span>' + escapeHtml(c.label || c.name) + '</span><b>' + escapeHtml(formatNumber(c[countField] || 0)) + '</b></li>';
         });
-
-        html += '</tbody></table>';
-        wrap.innerHTML = html;
-        refitDashTable(wrap);
+        wrap.innerHTML = html + '</ol>';
     }
 
     // =========================================================================
@@ -4978,6 +5700,9 @@
         var body = dvSlot(card, 'body');
         var pill = card.querySelector('.bp-dv-live-pill');
         var countEl = dvSlot(card, 'count');
+        // DB-IP's link (3.3.51): only while a row shows a country from its list.
+        var credit = card.querySelector('.bp-dv-live-credit');
+        if (credit) credit.hidden = true;
         if (!body) return;
 
         if (liveStale) {
@@ -5007,8 +5732,10 @@
         if (n) {
             var list = document.createElement('div');
             list.className = 'bp-dv-live-list' + (liveOpen ? ' is-open' : '');
-            rows.slice(0, liveOpen ? 100 : LIVE_SHOW).forEach(function (v) { list.appendChild(liveRow(v)); });
+            var drawn = rows.slice(0, liveOpen ? 100 : LIVE_SHOW);
+            drawn.forEach(function (v) { list.appendChild(liveRow(v)); });
             body.appendChild(list);
+            if (credit) credit.hidden = !drawn.some(function (v) { return !!liveCountry(v).short; });
             if (n > LIVE_SHOW) {
                 var more = document.createElement('button');
                 more.type = 'button';
@@ -5040,6 +5767,18 @@
         }
     }
 
+    // A Live row's country from the store's own IP list: its code, the short
+    // name that leads the grey line with the flag (empty: no flag) and the
+    // full name for the bubble.
+    function liveCountry(v) {
+        var cc = (typeof v.country === 'string' && /^[A-Z]{2}$/.test(v.country)) ? v.country : '';
+        return {
+            cc: cc,
+            short: cc && typeof v.country_short === 'string' ? v.country_short : '',
+            full: cc && typeof v.country_name === 'string' ? v.country_name : ''
+        };
+    }
+
     function liveRow(v) {
         var row = document.createElement('button');
         row.type = 'button';
@@ -5057,9 +5796,10 @@
         var cartCount = Number(v.cart_count) || (v.has_cart_item === 'Yes' ? 1 : 0);
         // Where the visitor browses from (3.3.40): flag and short name lead
         // the grey line, the full name goes in the bubble.
-        var cc = (typeof v.country === 'string' && /^[A-Z]{2}$/.test(v.country)) ? v.country : '';
-        var ccShort = cc && typeof v.country_short === 'string' ? v.country_short : '';
-        var ccFull = cc && typeof v.country_name === 'string' ? v.country_name : '';
+        var where = liveCountry(v);
+        var cc = where.cc;
+        var ccShort = where.short;
+        var ccFull = where.full;
 
         var who = name || page;
         var what = name ? page : (srcLine || (i18n.browsing || ''));
@@ -5253,230 +5993,395 @@
     }
 
     // =========================================================================
-    // MARKETPLACE ANALYTICS (BrikMarket)
+    // MARKETPLACES (BrikMarket)
     //
-    // Only fires when the server-side payload includes a `marketplace` key,
-    // which the dashboard PHP only emits when BrikMarket is active. Updates
-    // four KPI cards, the per-marketplace list, the share donut, the top
-    // categories table, and the marketplace top-products table.
+    // One row of two cards (Brikpanel_Dashboard::render_section_marketplace_
+    // analytics()). "Marketplaces" sums the period's marketplace sales, draws
+    // them day by day and shows in one ring where the period's sales came
+    // from: the store's own website and each marketplace, the share and the
+    // money of each beside it. "Best sellers on marketplaces" lists products
+    // and categories by sales in the store's currency. The payload has a
+    // `marketplace` block only while BrikMarket is active. Since 3.3.53; up to
+    // 3.3.52 four figure cards, a card per marketplace, a share ring of the
+    // marketplaces alone (Chart.js) and two tables.
     // =========================================================================
 
-    function renderMarketplaceAnalytics(mp) {
-        var section = document.getElementById('brikpanel-marketplace-section');
-        if (!section) return;
-        if (!mp) {
-            section.style.display = 'none';
-            return;
-        }
-        section.style.display = '';
+    // The website's part of the ring: the dashboard's own dark grey.
+    var MP_SITE_COLOR = '#303030';
 
-        // KPI cards.
-        var totals = mp.totals || {};
-        updateCard('card-mp-sales',  totals.revenue_html || '--');
-        updateCard('card-mp-orders', formatNumber(totals.orders || 0));
-        updateCard('card-mp-aov',    totals.aov_html || '--');
-        updateCard('card-mp-share',  escapeHtml(fmtPct(totals.share_total_pct || 0)));
-
-        var deltas = mp.deltas || {};
-        updateDelta('delta-mp-sales',  deltas.revenue);
-        updateDelta('delta-mp-orders', deltas.orders);
-        updateDelta('delta-mp-aov',    deltas.aov);
-
-        var shareDelta = document.getElementById('delta-mp-share');
-        if (shareDelta) {
-            // Static caption: site + marketplace combined revenue, formatted server-side.
-            shareDelta.classList.remove('positive', 'negative', 'neutral');
-            shareDelta.classList.add('neutral');
-            shareDelta.innerHTML = (i18n.mp_of_total || 'of') + ' ' + (totals.combined_revenue_html || '') + ' ' + (i18n.mp_combined || 'combined');
-        }
-
-        // Per-marketplace list.
-        // No marketplace order in the window: every marketplace card below
-        // gives the same reason (no order ever, or the latest paid day).
-        var mpRows = mp.by_marketplace || [];
-        var listEl = document.getElementById('brikpanel-mp-list');
-        if (listEl) {
-            var rows = mpRows;
-            if (rows.length === 0) {
-                showEmpty(listEl, emptyReason('orders', 'all'));
-            } else {
-                var html = '';
-                rows.forEach(function (row) {
-                    var initial = (row.label || '?').charAt(0).toUpperCase();
-                    var deltaClass = row.delta_revenue > 0 ? 'positive' : (row.delta_revenue < 0 ? 'negative' : 'neutral');
-                    var deltaText  = row.delta_revenue === 0 ? '--' : (row.delta_revenue > 0 ? '+' : '') + fmtPct(row.delta_revenue);
-                    var cats = '';
-                    if (row.top_categories && row.top_categories.length) {
-                        cats = '<div class="brikpanel-dash-mp-cats">';
-                        row.top_categories.forEach(function (c) {
-                            cats += '<span class="brikpanel-dash-mp-cat">' + escapeHtml(c.name) + '</span>';
-                        });
-                        cats += '</div>';
-                    }
-
-                    html +=
-                        '<div class="brikpanel-dash-mp-item">' +
-                          '<div class="brikpanel-dash-mp-item-head">' +
-                            '<span class="brikpanel-dash-mp-badge" style="background:' + escapeHtml(row.color) + ';">' + escapeHtml(initial) + '</span>' +
-                            '<span class="brikpanel-dash-mp-name">' + escapeHtml(row.label) + '</span>' +
-                            '<span class="brikpanel-dash-mp-share">' + escapeHtml(fmtPct(row.revenue_share)) + '</span>' +
-                          '</div>' +
-                          '<div class="brikpanel-dash-mp-bar"><span style="width:' + Math.min(100, row.revenue_share) + '%;background:' + escapeHtml(row.color) + ';"></span></div>' +
-                          '<div class="brikpanel-dash-mp-stats">' +
-                            '<div><span>' + (i18n.revenue || 'Revenue') + '</span><strong>' + row.revenue_html + '</strong></div>' +
-                            '<div><span>' + (i18n.orders || 'Orders') + '</span><strong>' + formatNumber(row.orders) + '</strong></div>' +
-                            '<div><span>' + (i18n.aov || 'AOV') + '</span><strong>' + row.aov_html + '</strong></div>' +
-                            '<div><span>' + (i18n.vs_prev || 'vs. prev') + '</span><strong class="brikpanel-dash-mp-delta ' + deltaClass + '">' + deltaText + '</strong></div>' +
-                          '</div>' +
-                          cats +
-                        '</div>';
-                });
-                listEl.innerHTML = html;
-            }
-        }
-
-        // Share donut.
-        renderMarketplaceShareChart(mp.by_marketplace || []);
-
-        // Top categories.
-        var catEl = document.getElementById('brikpanel-mp-categories');
-        if (catEl) {
-            var cats = mp.categories || [];
-            if (cats.length === 0 && mpRows.length === 0) {
-                showEmpty(catEl, emptyReason('orders', 'all'));
-            } else if (cats.length === 0) {
-                // Categories require marketplace items to be linked to a WC
-                // product (via _product_id or _marketplace_sku). Make the
-                // empty state explain that — generic "No data" is misleading
-                // when the user has marketplace orders but no mapped catalog.
-                showEmpty(catEl, { text: i18n.mp_no_categories || '', note: '', preset: '' });
-            } else {
-                var ch = '<table class="brikpanel-dash-table"><thead><tr>' +
-                    '<th>#</th>' +
-                    '<th>' + (i18n.category || 'Category') + '</th>' +
-                    '<th>' + (i18n.orders || 'Orders') + '</th>' +
-                    '<th>' + (i18n.revenue || 'Revenue') + '</th>' +
-                    '<th>' + (i18n.share || 'Share') + '</th>' +
-                    '</tr></thead><tbody>';
-                cats.forEach(function (c, i) {
-                    ch += '<tr>' +
-                        '<td class="rank">' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(c.name) + '</td>' +
-                        '<td>' + formatNumber(c.orders) + '</td>' +
-                        '<td>' + c.revenue_html + '</td>' +
-                        '<td>' + escapeHtml(fmtPct(c.share)) + '</td>' +
-                        '</tr>';
-                });
-                ch += '</tbody></table>';
-                catEl.innerHTML = ch;
-                refitDashTable(catEl);
-            }
-        }
-
-        // Top products.
-        var prEl = document.getElementById('brikpanel-mp-products');
-        if (prEl) {
-            var products = mp.top_products || [];
-            if (products.length === 0) {
-                showEmpty(prEl, emptyReason('orders', 'all'));
-            } else {
-                var ph = '<table class="brikpanel-dash-table"><thead><tr>' +
-                    '<th>#</th>' +
-                    '<th>' + (i18n.product || 'Product') + '</th>' +
-                    '<th>' + (i18n.source || 'Source') + '</th>' +
-                    '<th>' + (i18n.qty_sold || 'Qty') + '</th>' +
-                    '<th>' + (i18n.revenue || 'Revenue') + '</th>' +
-                    '</tr></thead><tbody>';
-                products.forEach(function (p, i) {
-                    ph += '<tr>' +
-                        '<td class="rank">' + (i + 1) + '</td>' +
-                        '<td>' + escapeHtml(p.name) + '</td>' +
-                        '<td><span class="brikpanel-dash-source" style="background:' + escapeHtml(p.marketplace_color) + ';">' + escapeHtml(p.marketplace_label) + '</span></td>' +
-                        '<td>' + formatNumber(p.qty) + '</td>' +
-                        '<td>' + p.revenue_html + '</td>' +
-                        '</tr>';
-                });
-                ph += '</tbody></table>';
-                prEl.innerHTML = ph;
-                refitDashTable(prEl);
-            }
-        }
+    // A marketplace's brand colour from the server's palette, or '' for
+    // anything that is not a plain hex colour.
+    function mpColor(c) {
+        return /^#[0-9a-f]{3,8}$/i.test(String(c || '')) ? String(c) : '';
     }
 
-    function renderMarketplaceShareChart(rows) {
-        var canvas = document.getElementById('brikpanel-mp-share-chart');
-        if (!canvas || typeof Chart === 'undefined') return;
+    // The ring's colour for each marketplace: the server's (its brand colour,
+    // or a steady tone of it when another of the store's marketplaces has
+    // nearly the same colour, Brikpanel_Dashboard::mp_tones()).
+    function mpPartColors(rows) {
+        return rows.map(function (r) { return mpColor(r.tone) || mpColor(r.color) || '#8a8a8a'; });
+    }
 
-        rows = Array.isArray(rows) ? rows : [];
-        var labels = rows.map(function (r) { return r.label; });
-        var data   = rows.map(function (r) { return r.revenue; });
-        var colors = rows.map(function (r) { return r.color; });
+    // A marketplace's mark: its initial on its colour.
+    function mpChip(row, color) {
+        var chip = document.createElement('span');
+        chip.className = 'bp-dv-mp-chip';
+        chip.setAttribute('aria-hidden', 'true');
+        var c = mpColor(color) || mpColor(row && row.color);
+        if (c) chip.style.setProperty('--bp-mp', c);
+        var initial = monogram(row && row.label);
+        chip.textContent = (Array.from ? Array.from(initial)[0] : initial.charAt(0)) || '';
+        return chip;
+    }
 
-        // No marketplace revenue: the reason instead of an empty ring.
-        if (!data.some(function (v) { return Number(v) > 0; })) {
-            setChartEmpty(canvas, emptyReason('orders', 'all'));
+    // Why a marketplace card is empty: a window without any paid order says
+    // so (and when the last one was); a window with orders only on the
+    // website keeps the given sentence.
+    function mpEmptyReason(fallback) {
+        return emptyReason('orders', 'all', fallback || i18n.mp_none);
+    }
+
+    function renderMarketplace(d) {
+        var section = document.getElementById('brikpanel-marketplace-section');
+        if (!section) return;
+        var mp = d && d.marketplace;
+        // A copy of the data from before BrikMarket was turned on.
+        section.hidden = !mp;
+        if (!mp) return;
+        dvCards('mp').forEach(function (card) {
+            drawMpSummary(card, mp, d);
+            drawMpColumns(card, d);
+            schedulePlay(card, function () { playMpCard(card); });
+        });
+        dvCards('mp-top').forEach(function (card) {
+            drawMpTop(card, mp);
+            schedulePlay(card, function () { playProductBars(card); });
+        });
+    }
+
+    function drawMpSummary(card, mp, d) {
+        var totals = mp.totals || {};
+        var deltas = mp.deltas || {};
+        var rows = Array.isArray(mp.by_marketplace) ? mp.by_marketplace : [];
+        var orders = Number(totals.orders) || 0;
+        var colors = mpPartColors(rows);
+
+        updateCard('card-mp-sales', totals.revenue_html || escapeHtml(money(totals.revenue || 0)));
+        updateCard('card-mp-orders', escapeHtml(formatNumber(orders)));
+        updateCard('card-mp-aov', totals.aov_html || escapeHtml(money(totals.aov || 0)));
+        updateDelta('delta-mp-sales', deltas.revenue);
+        updateDelta('delta-mp-orders', deltas.orders);
+        updateDelta('delta-mp-aov', deltas.aov);
+
+        // One marketplace: its name beside the title says whose figures these are.
+        var one = dvSlot(card, 'one');
+        if (one) {
+            one.textContent = '';
+            if (rows.length === 1) {
+                one.appendChild(mpChip(rows[0], colors[0]));
+                var name = document.createElement('span');
+                name.className = 'bp-dv-mp-one-name';
+                name.setAttribute('dir', 'auto');
+                name.textContent = String(rows[0].label || '');
+                one.appendChild(name);
+            }
+        }
+
+        drawMpMix(card, totals, rows, colors, d || {});
+    }
+
+    // A share as the legend writes it: one decimal, none for 0 and 100, and
+    // "<0.1%" for a part too small to round to a tenth.
+    function mpPct(v) {
+        if (v > 0 && v < 0.05) return '<' + fmtPct(0.1, 1);
+        return fmtPct(v, v <= 0 || v >= 99.95 ? 0 : 1);
+    }
+
+    // Where the period's sales came from: the website first, then each
+    // marketplace by sales, as one ring and a line for each part (its colour,
+    // name, money and share). A part under the pointer or the keyboard stands
+    // out; its line holds the orders and the average order in a bubble.
+    function drawMpMix(card, totals, rows, colors, d) {
+        var slot = dvSlot(card, 'mix');
+        var box = dvSlot(card, 'mixbox');
+        if (!slot || !box) return;
+        var lead = slot.querySelector('.bp-dv-lead');
+        if (!(Number(totals.orders) > 0)) {
+            if (lead) lead.hidden = true;
+            box.classList.remove('is-narrow');
+            showEmpty(box, mpEmptyReason());
             return;
         }
-        var wasHidden = setChartEmpty(canvas, null);
+        if (lead) lead.hidden = false;
+        var parts = [{
+            key: 'site',
+            name: i18n.mp_website || '',
+            v: Math.max(0, Number(totals.site_revenue) || 0),
+            color: MP_SITE_COLOR,
+            orders: Number(d.order_count) || 0,
+            aov: Number(d.aov_raw) || 0
+        }];
+        rows.forEach(function (r, i) {
+            parts.push({
+                key: 'mp' + i,
+                name: String(r.label || ''),
+                v: Math.max(0, Number(r.revenue) || 0),
+                color: colors[i],
+                orders: Number(r.orders) || 0,
+                aov: Number(r.aov) || 0
+            });
+        });
+        var total = 0;
+        parts.forEach(function (p) { total += p.v; });
+        parts.forEach(function (p) { p.pct = total > 0 ? p.v / total * 100 : 0; });
 
-        if (mpShareChart) {
-            mpShareChart.data.labels = labels;
-            mpShareChart.data.datasets[0].data = data;
-            mpShareChart.data.datasets[0].backgroundColor = colors;
-            if (wasHidden) mpShareChart.resize();
-            mpShareChart.update();
+        // Beside its lines on a card of 280px or more (a smaller ring under
+        // 400px, a phone), above them on a narrower one.
+        var w = box.clientWidth || 300;
+        var narrow = w < 280;
+        var compact = !narrow && w < 400;
+        box.classList.toggle('is-narrow', narrow);
+        box.classList.toggle('is-compact', compact);
+        box.textContent = '';
+        if (V) box.appendChild(V.ring(parts.map(function (p) { return { key: p.key, pct: p.pct, color: p.color }; }), narrow ? 120 : (compact ? 96 : 124)));
+        var list = document.createElement('ul');
+        list.className = 'bp-dv-mp-mixleg';
+        box.appendChild(list);
+        parts.forEach(function (p) {
+            var li = document.createElement('li');
+            li.className = 'bp-dv-mp-mixitem' + (p.v > 0 ? '' : ' is-zero');
+            li.setAttribute('data-k', p.key);
+            li.setAttribute('tabindex', '0');
+            li.setAttribute('data-bp-tip', 'top');
+            var sw = document.createElement('i');
+            sw.className = 'bp-dv-sw';
+            sw.style.setProperty('--bp-ring', p.color);
+            sw.setAttribute('aria-hidden', 'true');
+            var name = document.createElement('span');
+            name.className = 'bp-dv-lname';
+            var label = document.createElement('span');
+            label.className = 'bp-dv-mp-mixname';
+            label.setAttribute('dir', 'auto');
+            label.textContent = p.name;
+            name.appendChild(label);
+            var small = document.createElement('small');
+            setIsolated(small, money(p.v));
+            name.appendChild(small);
+            var pct = document.createElement('b');
+            pct.className = 'bp-dv-lpct';
+            setIsolated(pct, mpPct(p.pct));
+            var bubble = document.createElement('span');
+            bubble.className = 'brikpanel-tip bp-dv-tipbox';
+            bubble.setAttribute('role', 'tooltip');
+            var tipRows = [[i18n.sales || '', money(p.v)], [i18n.orders || '', formatNumber(p.orders)]];
+            if (p.orders > 0) tipRows.push([i18n.aov_label || '', money(p.aov)]);
+            if (V) V.tip.fill(bubble, { title: p.name, rows: tipRows });
+            li.appendChild(sw);
+            li.appendChild(name);
+            li.appendChild(pct);
+            li.appendChild(bubble);
+            list.appendChild(li);
+        });
+        wireMpMix(card, box);
+    }
+
+    // An arc or a line under the pointer, or a line with the focus, lights up
+    // its part and dims the rest (the Order rates card's way).
+    function wireMpMix(card, box) {
+        var setHl = function (key) {
+            card.classList.toggle('is-hl', !!key);
+            box.querySelectorAll('[data-k]').forEach(function (n) {
+                var same = !!key && n.getAttribute('data-k') === key;
+                n.classList.toggle('is-on', same);
+                n.classList.toggle('is-dim', !!key && !same);
+            });
+        };
+        var keyOf = function (t) {
+            var n = t && t.closest ? t.closest('[data-k]') : null;
+            return n && box.contains(n) ? n.getAttribute('data-k') : null;
+        };
+        box.onpointerover = function (e) { setHl(keyOf(e.target)); };
+        box.onpointerleave = function () { setHl(null); };
+        box.onfocusin = function (e) { setHl(keyOf(e.target)); };
+        box.onfocusout = function () { setHl(null); };
+    }
+
+    function playMpCard(card) {
+        if (!V) return;
+        card.querySelectorAll('.bp-dv-ring').forEach(function (svg) {
+            V.anim(svg, [{ opacity: 0, transform: 'rotate(-40deg) scale(.92)' }, { opacity: 1, transform: 'rotate(0) scale(1)' }], { duration: 620, delay: 60, easing: V.EASE_OUT });
+        });
+        card.querySelectorAll('.bp-dv-mp-mixitem').forEach(function (li, i) {
+            V.anim(li, [{ opacity: 0, transform: 'translateY(4px)' }, { opacity: 1, transform: 'translateY(0)' }], { duration: 360, delay: 160 + i * 70, easing: V.EASE_OUT });
+        });
+        var cols = card.querySelectorAll('.bp-dv-col');
+        var step = cols.length ? Math.min(14, 420 / cols.length) : 0;
+        Array.prototype.forEach.call(cols, function (c, i) {
+            V.anim(c, [{ transform: 'scaleY(0)' }, { transform: 'scaleY(1)' }], { duration: 480, delay: 60 + i * step, easing: V.EASE_OUT });
+        });
+    }
+
+    // A day as the date button writes it (shortRangeLabel()): day and month
+    // while the whole period is in the store's current year, the short date
+    // with its year otherwise.
+    function mpDayLabel(day, thisYear) {
+        if (!BF) return String(day || '');
+        return thisYear ? BF.dayMonth(day) : BF.dateShort(day);
+    }
+
+    // The marketplace part of each point of the sales series: every
+    // order's sales ('ra') less the website's ('r'). Null without 'ra' (a copy
+    // of the data from before 3.3.53).
+    function mpSeries(d) {
+        var ss = d && d.sales_series;
+        var cur = ss && Array.isArray(ss.cur) ? ss.cur : [];
+        if (!cur.some(function (x) { return x && x.ra !== undefined; })) return null;
+        return {
+            unit: ss.unit === 'hour' ? 'hour' : 'day',
+            pts: cur.map(function (x) {
+                return x ? { t: String(x.t || ''), v: Math.max(0, (Number(x.ra) || 0) - (Number(x.r) || 0)) } : null;
+            })
+        };
+    }
+
+    // Marketplace sales through the period, day by day (hour by hour on a
+    // one-day period): what the sales chart, website orders only, leaves out.
+    // A long period folds into weeks, or into as many days a column as the
+    // card's width allows. Nothing sold: no columns.
+    function drawMpColumns(card, d) {
+        var box = dvSlot(card, 'cols');
+        if (!box || !V) return;
+        var series = mpSeries(d);
+        var sold = !!series && series.pts.some(function (p) { return p && p.v > 0; });
+        box.hidden = !sold;
+        if (!sold) {
+            box.textContent = '';
             return;
         }
-
-        var ctx = canvas.getContext('2d');
-        mpShareChart = new Chart(ctx, {
-            type: 'doughnut',
-            data: {
-                labels: labels,
-                datasets: [{
-                    data: data,
-                    backgroundColor: colors,
-                    borderColor: '#ffffff',
-                    borderWidth: 2,
-                    hoverOffset: 6
-                }]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                cutout: '62%',
-                plugins: {
-                    legend: {
-                        position: 'right',
-                        labels: { boxWidth: 12, padding: 10, font: { size: 12 } }
-                    },
-                    tooltip: {
-                        callbacks: {
-                            label: function (ctx) {
-                                var total = ctx.dataset.data.reduce(function (a, b) { return a + b; }, 0);
-                                var pct   = total > 0 ? (ctx.parsed / total) * 100 : 0;
-                                return ctx.label + ': ' + fmtPct(pct, 1);
-                            }
-                        }
-                    }
-                }
+        var w = box.clientWidth;
+        if (!w) return;
+        var hourly = series.unit === 'hour';
+        var pts = series.pts;
+        var groups = [];
+        if (hourly) {
+            groups = pts.map(function (p, i) { return { from: i, to: i, v: p ? p.v : null }; });
+        } else {
+            var room = Math.max(12, Math.floor(w / 5));
+            var per = pts.length <= room ? 1 : (Math.ceil(pts.length / 7) <= room ? 7 : Math.ceil(pts.length / room));
+            for (var i = 0; i < pts.length; i += per) {
+                var v = 0;
+                for (var j = i; j < Math.min(pts.length, i + per); j++) v += pts[j] ? pts[j].v : 0;
+                groups.push({ from: i, to: Math.min(pts.length, i + per) - 1, v: v });
+            }
+        }
+        var year = String(CFG.store_today || '').slice(0, 4);
+        var ends = [pts[0], pts[pts.length - 1]];
+        var thisYear = ends.every(function (p) { return p && p.t.slice(0, 4) === year; });
+        var label = function (i) {
+            if (hourly) return hourLabel(i);
+            var p = pts[i];
+            return p ? mpDayLabel(p.t.slice(0, 10), thisYear) : '';
+        };
+        var aria = hourly ? (i18n.mp_cols_hour || '') : (i18n.mp_cols_day || '');
+        box.setAttribute('aria-label', aria);
+        V.columns(box, {
+            values: groups.map(function (g) { return g.v; }),
+            first: label(0),
+            last: label(pts.length - 1),
+            ariaLabel: aria,
+            live: dvSlot(card, 'cols-live'),
+            tipAt: function (k) {
+                var g = groups[k];
+                if (!g) return { title: '', rows: [] };
+                var title = hourly
+                    ? (BF ? BF.range(hourLabel(g.from), hourLabel(g.from, '59')) : '')
+                    : (g.from === g.to ? label(g.from) : (BF ? BF.range(label(g.from), label(g.to)) : label(g.from)));
+                return { title: title, rows: [[i18n.sales || '', g.v === null ? (i18n.sales_not_yet || '') : money(g.v)]] };
             }
         });
+    }
+
+    function drawMpTop(card, mp) {
+        var marketplaces = Array.isArray(mp.by_marketplace) ? mp.by_marketplace.length : 0;
+        card.querySelectorAll('[data-bp-dv-view]').forEach(function (panel) {
+            var view = panel.getAttribute('data-bp-dv-view');
+            if (view === 'products') drawMpProducts(panel, mp.top_products, marketplaces);
+            else if (view === 'categories') drawMpCategories(panel, mp.categories, marketplaces);
+        });
+    }
+
+    // Products by sales; with two marketplaces or more each names where it sold.
+    function drawMpProducts(panel, items, marketplaces) {
+        items = Array.isArray(items) ? items : [];
+        if (!items.length) {
+            // Orders whose lines carry no product name list nothing.
+            showEmpty(panel, mpEmptyReason(marketplaces ? i18n.no_data : i18n.mp_none));
+            return;
+        }
+        var max = 0;
+        items.forEach(function (p) { max = Math.max(max, Number(p.revenue) || 0); });
+        var ul = document.createElement('ul');
+        ul.className = 'bp-dv-plist';
+        items.forEach(function (p, i) {
+            var qty = Math.max(0, Number(p.qty) || 0);
+            ul.appendChild(mpTopRow(String(p.name || ''), marketplaces > 1 ? String(p.marketplace_label || '') : '', Number(p.revenue) || 0, max, BF ? BF.count(i18n.mp_units_sold, qty) : String(qty), i + 1));
+        });
+        panel.textContent = '';
+        panel.appendChild(ul);
+    }
+
+    // Categories by sales, as many rows as the products tab (no jump between
+    // tabs). Lines without a catalog product have no category.
+    function drawMpCategories(panel, cats, marketplaces) {
+        cats = Array.isArray(cats) ? cats.slice(0, 5) : [];
+        if (!cats.length) {
+            if (marketplaces) showEmpty(panel, { text: i18n.mp_no_categories || i18n.no_data || '', note: '', preset: '' });
+            else showEmpty(panel, mpEmptyReason());
+            return;
+        }
+        var max = 0;
+        cats.forEach(function (c) { max = Math.max(max, Number(c.revenue) || 0); });
+        var ul = document.createElement('ul');
+        ul.className = 'bp-dv-plist';
+        cats.forEach(function (c, i) {
+            var n = Math.max(0, Number(c.orders) || 0);
+            ul.appendChild(mpTopRow(String(c.name || ''), '', Number(c.revenue) || 0, max, BF ? BF.count(i18n.camp_orders, n) : String(n), i + 1));
+        });
+        panel.textContent = '';
+        panel.appendChild(ul);
+    }
+
+    // A row of the Products list's look (productRow()): rank, initials, the
+    // name (and the marketplace it sold on) with its bar, the sales and the
+    // line under them.
+    function mpTopRow(name, where, sales, max, sub, rank) {
+        var li = document.createElement('li');
+        li.className = 'bp-dv-prow';
+        var nameHtml = '<span class="bp-dv-pname" dir="auto" title="' + escapeHtml(name) + '">' + escapeHtml(name) + '</span>';
+        if (where) {
+            nameHtml = '<span class="bp-dv-pline">' + nameHtml + '<span class="bp-dv-ptype" dir="auto">' + escapeHtml(where) + '</span></span>';
+        }
+        li.innerHTML =
+            '<span class="bp-dv-rank">' + escapeHtml(formatNumber(rank)) + '</span>' +
+            '<span class="bp-dv-ptile" aria-hidden="true">' + escapeHtml(monogram(name)) + '</span>' +
+            '<span class="bp-dv-pmain">' + nameHtml +
+            '<span class="bp-dv-pbar"><i style="width:' + (max > 0 ? Math.min(100, Math.max(0, sales) / max * 100) : 0).toFixed(1) + '%"></i></span></span>' +
+            '<span class="bp-dv-pval"><b><bdi>' + escapeHtml(money(sales)) + '</bdi></b><span><bdi>' + escapeHtml(sub) + '</bdi></span></span>';
+        return li;
     }
 
     // =========================================================================
     // PERIOD SUBTITLE (which dates / how long)
     // =========================================================================
 
+    // The answer's window on the date button (the server's text wins over the
+    // one written at the click), and once to screen readers when it changes.
     function renderPeriod(period) {
-        var box = document.getElementById('brikpanel-dash-period');
-        if (!box) return;
-        var textEl = box.querySelector('.brikpanel-dash-period-text');
-        if (!textEl) return;
-        if (period && period.text) {
-            textEl.textContent = period.text;
-        } else {
-            textEl.textContent = (i18n.period_loading || 'Loading…');
+        if (!period) return;
+        setPickerDates(period.short || '', period.text || '');
+        var live = document.getElementById('brikpanel-dash-period');
+        if (live && period.text && live.textContent !== period.text) {
+            live.textContent = period.text;
         }
     }
 

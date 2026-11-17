@@ -359,8 +359,6 @@ body.rtl .globe-code-tag { left: auto; right: 6px; }
 body.rtl .brikpanel-dash-wp-widget-body table td,
 body.rtl .brikpanel-dash-wp-widget-body table th { text-align: right; }
 
-body.rtl .brikpanel-dash-header-suffix { margin-left: 0; margin-right: 0.25rem; }
-
 body.rtl .brikpanel-dash-copy-progress { left: auto; right: 0; }
 
 

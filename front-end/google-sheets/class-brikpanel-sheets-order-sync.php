@@ -77,8 +77,34 @@ class Brikpanel_Sheets_Order_Sync {
 	// in class-brikpanel-sheets-products-sync.php for why we limit writable
 	// fields to one per entity instead of opening price/customer/etc.
 	const OPT_PULL_ENABLED    = 'brikpanel_gs_orders_pull_enabled';
-	const OPT_PULL_INTERVAL   = 'brikpanel_gs_orders_pull_interval'; // 2|5|15 (minutes)
+	const OPT_PULL_INTERVAL   = 'brikpanel_gs_orders_pull_interval'; // 2|5|15 (minutes) or manual
 	const OPT_LAST_PULL       = 'brikpanel_gs_orders_last_pull';
+
+	/**
+	 * Orders whose sheet rows must be rewritten (status changed after their
+	 * rows were pushed): { order_id => failed attempts }. One job drains it.
+	 *
+	 * Until 3.3.49 every status change queued a job of its own, and each job
+	 * read the whole order id column, wrote its row and ran a full order save.
+	 * Marking 50 orders completed in the list meant 50 jobs, 100 calls to
+	 * Google inside a minute (its per-user limit is 60 writes a minute) and
+	 * 50 extra saves through every plugin's hooks. Now it is one job, one
+	 * read and one write for all of them.
+	 */
+	const OPT_UPDATE_QUEUE      = 'brikpanel_gs_orders_update_queue';
+	const UPDATE_DEBOUNCE_SEC   = 5;
+	const UPDATE_BATCH          = 200;
+	const UPDATE_MAX_ATTEMPTS   = 3;
+	const UPDATE_RETRY_SEC      = 300;
+
+	/** @var array<int, bool> Orders queued for a row update during this request, written on shutdown. */
+	private static $pending_updates = [];
+
+	/** @var bool Whether the shutdown write is hooked. */
+	private static $update_flush_hooked = false;
+
+	/** @var bool Whether the shutdown write already ran. */
+	private static $update_flushed = false;
 
 	const BATCH_SIZE          = 250;
 
@@ -291,6 +317,16 @@ class Brikpanel_Sheets_Order_Sync {
 		}
 	}
 
+	/**
+	 * "Manual only": two-way sync stays on, but nothing reads the sheet on a
+	 * schedule. The merchant's "Pull now" brings the edits in.
+	 *
+	 * @return bool
+	 */
+	public static function pull_is_manual() {
+		return 'manual' === (string) get_option( self::OPT_PULL_INTERVAL, '5' );
+	}
+
 	// =========================================================================
 	// Hook attachment
 	// =========================================================================
@@ -342,8 +378,9 @@ class Brikpanel_Sheets_Order_Sync {
 			Brikpanel_Cron::cancel( self::HOOK_BULK_FLUSH );
 		}
 
-		// Schedule pull only when flow + pull half are both enabled.
-		if ( self::is_enabled() && self::pull_enabled() ) {
+		// Schedule pull only when flow + pull half are both enabled, and the
+		// merchant did not choose to pull by hand.
+		if ( self::is_enabled() && self::pull_enabled() && ! self::pull_is_manual() ) {
 			Brikpanel_Cron::schedule_recurring( self::HOOK_PULL, self::pull_interval_seconds(), [] );
 		} else {
 			Brikpanel_Cron::cancel( self::HOOK_PULL );
@@ -379,8 +416,94 @@ class Brikpanel_Sheets_Order_Sync {
 			}
 			return;
 		}
-		// Already synced — schedule a targeted row update.
-		Brikpanel_Cron::enqueue_async( self::HOOK_UPDATE_ROWS, [ 'order_ids' => [ $order_id ] ] );
+		// Already synced — queue its rows for the next row update.
+		self::queue_row_update( $order_id );
+	}
+
+	// =========================================================================
+	// Row update queue
+	// =========================================================================
+
+	/**
+	 * Queue an order whose sheet rows must be rewritten. IDs are only collected
+	 * here and written once, at the end of the request, so a bulk action on
+	 * the orders list costs one option write and one job.
+	 *
+	 * @param int $order_id
+	 * @return void
+	 */
+	public static function queue_row_update( $order_id ) {
+		$order_id = (int) $order_id;
+		if ( $order_id <= 0 ) {
+			return;
+		}
+		self::$pending_updates[ $order_id ] = true;
+
+		if ( self::$update_flushed ) {
+			// Called after the shutdown write (another shutdown callback
+			// changing a status): write straight through.
+			self::flush_pending_row_updates();
+			return;
+		}
+		if ( ! self::$update_flush_hooked ) {
+			self::$update_flush_hooked = true;
+			add_action( 'shutdown', [ __CLASS__, 'flush_pending_row_updates' ], PHP_INT_MAX );
+		}
+	}
+
+	/**
+	 * Write the orders collected by queue_row_update() and schedule the job.
+	 *
+	 * @return void
+	 */
+	public static function flush_pending_row_updates() {
+		self::$update_flushed = true;
+		if ( empty( self::$pending_updates ) ) {
+			return;
+		}
+		$ids                   = array_keys( self::$pending_updates );
+		self::$pending_updates = [];
+
+		$queue = self::read_update_queue();
+		foreach ( $ids as $id ) {
+			// A new change gets fresh tries, even if an older one kept failing.
+			$queue[ (string) (int) $id ] = 0;
+		}
+		update_option( self::OPT_UPDATE_QUEUE, $queue, false );
+
+		self::schedule_row_update_job( self::UPDATE_DEBOUNCE_SEC, true );
+	}
+
+	/**
+	 * The stored queue, read fresh: a job may have drained it, or another
+	 * request added to it, since this request first loaded it.
+	 *
+	 * @return array<string, int>
+	 */
+	private static function read_update_queue() {
+		wp_cache_delete( self::OPT_UPDATE_QUEUE, 'options' );
+		$notoptions = wp_cache_get( 'notoptions', 'options' );
+		if ( is_array( $notoptions ) && isset( $notoptions[ self::OPT_UPDATE_QUEUE ] ) ) {
+			unset( $notoptions[ self::OPT_UPDATE_QUEUE ] );
+			wp_cache_set( 'notoptions', $notoptions, 'options' );
+		}
+		$queue = get_option( self::OPT_UPDATE_QUEUE, [] );
+		return is_array( $queue ) ? $queue : [];
+	}
+
+	/**
+	 * @param int  $delay  Seconds from now.
+	 * @param bool $unique Unique is right from a normal request: one pending job
+	 *                     drains everything. It is wrong from inside the job
+	 *                     itself, which Action Scheduler counts as the pending
+	 *                     one, so the job's own successor is never unique.
+	 * @return void
+	 */
+	private static function schedule_row_update_job( $delay, $unique ) {
+		if ( ! class_exists( 'Brikpanel_Cron' ) ) {
+			return;
+		}
+		Brikpanel_Cron::schedule_single( time() + max( 0, (int) $delay ), self::HOOK_UPDATE_ROWS, [], [ 'unique' => (bool) $unique ] );
 	}
 
 	// =========================================================================
@@ -446,21 +569,102 @@ class Brikpanel_Sheets_Order_Sync {
 	}
 
 	/**
-	 * Update rows for already-synced orders that changed status.
+	 * Rewrite the sheet rows of already-synced orders that changed status.
 	 *
-	 * @param array $args { order_ids: int[] }
+	 * Drains the row update queue (OPT_UPDATE_QUEUE) in batches. Jobs queued by
+	 * versions before 3.3.49 carry their order ids in $args and are served the
+	 * same way. Orders whose rows Google refused stay queued and are tried
+	 * again in UPDATE_RETRY_SEC, at most UPDATE_MAX_ATTEMPTS times.
+	 *
+	 * @param array $args { order_ids?: int[] }
+	 * @return void
+	 * @throws Brikpanel_Sheets_Exception When Google refused rows, so Action
+	 *                                    Scheduler shows the job as failed.
 	 */
 	public function handle_update_rows( $args = [] ) {
-		$args = (array) $args;
-		$ids  = isset( $args['order_ids'] ) && is_array( $args['order_ids'] ) ? array_map( 'intval', $args['order_ids'] ) : [];
-		if ( empty( $ids ) ) {
-			return;
-		}
+		$args   = (array) $args;
+		$legacy = isset( $args['order_ids'] ) && is_array( $args['order_ids'] ) ? array_map( 'intval', $args['order_ids'] ) : [];
+
 		$config = self::resolve_active_target();
-		if ( ! $config ) {
+		if ( ! $config || ! self::is_enabled() || ! Brikpanel_Sheets_Tokens::is_connected() ) {
+			// Nothing can be written now. Keep the orders queued for when it
+			// can: the next status change runs the job again.
+			if ( $legacy ) {
+				$queue = self::read_update_queue();
+				foreach ( $legacy as $id ) {
+					if ( $id > 0 ) {
+						$queue[ (string) $id ] = (int) ( $queue[ (string) $id ] ?? 0 );
+					}
+				}
+				update_option( self::OPT_UPDATE_QUEUE, $queue, false );
+			}
 			return;
 		}
 
+		$queue = self::read_update_queue();
+		$ids   = array_values( array_unique( array_filter(
+			array_merge( $legacy, array_map( 'intval', array_keys( $queue ) ) ),
+			static function ( $id ) {
+				return $id > 0;
+			}
+		) ) );
+		if ( empty( $ids ) ) {
+			return;
+		}
+		$batch  = array_slice( $ids, 0, self::UPDATE_BATCH );
+		$result = $this->update_rows_now( $batch, $config );
+
+		// Settle the queue against a fresh read: other requests may have queued
+		// orders while this one was talking to Google.
+		$queue   = self::read_update_queue();
+		$gave_up = [];
+		foreach ( $result['done'] as $id ) {
+			unset( $queue[ (string) $id ] );
+		}
+		foreach ( $result['failed'] as $id ) {
+			$tries = (int) ( $queue[ (string) $id ] ?? 0 ) + 1;
+			if ( $tries >= self::UPDATE_MAX_ATTEMPTS ) {
+				unset( $queue[ (string) $id ] );
+				$gave_up[] = (int) $id;
+			} else {
+				$queue[ (string) $id ] = $tries;
+			}
+		}
+		update_option( self::OPT_UPDATE_QUEUE, $queue, false );
+
+		if ( $gave_up ) {
+			sort( $gave_up );
+			Brikpanel_Sheets_Logger::log(
+				'orders',
+				'Gave up on the sheet rows of ' . count( $gave_up ) . ' order(s) after ' . self::UPDATE_MAX_ATTEMPTS . ' tries: '
+					. implode( ', ', array_slice( $gave_up, 0, 10 ) ) . ( count( $gave_up ) > 10 ? ' and ' . ( count( $gave_up ) - 10 ) . ' more' : '' )
+					. '. Their next status change writes them again.'
+			);
+		}
+
+		// One successor at most: soon for orders this run did not reach (a
+		// bigger batch, or queued meanwhile), later when only refused ones wait.
+		$untried = array_diff( array_map( 'intval', array_keys( $queue ) ), $result['failed'] );
+		if ( $untried ) {
+			self::schedule_row_update_job( self::UPDATE_DEBOUNCE_SEC, false );
+		} elseif ( $queue ) {
+			self::schedule_row_update_job( self::UPDATE_RETRY_SEC, false );
+		}
+
+		if ( $result['error'] instanceof \Throwable ) {
+			throw $result['error'];
+		}
+	}
+
+	/**
+	 * Rewrite the rows of these orders: one read of the order id column, one
+	 * batched write for every row, the bookkeeping in one direct write.
+	 *
+	 * @param int[] $ids
+	 * @param array $config { spreadsheet_id, tab }
+	 * @return array{done: int[], failed: int[], error: ?\Throwable}
+	 */
+	private function update_rows_now( array $ids, array $config ) {
 		$client  = new Brikpanel_Sheets_Client();
 		$columns = Brikpanel_Sheets_Mapping::get_columns( 'orders' );
 
@@ -472,89 +676,166 @@ class Brikpanel_Sheets_Order_Sync {
 		// thing standing between a sorted sheet and cross-order corruption.
 		$live_rows = $this->existing_rows_by_order_id( $client, $config, $columns );
 
+		$writes = []; // A1 range => [ row ]
+		$owners = []; // A1 range => order id
+		$pushed = []; // order id => bookkeeping meta, recorded once its rows landed
+		$done   = []; // nothing to write (gone, or no rows of its own): leaves the queue
+		$failed = []; // order id => true: tried again later, given up after UPDATE_MAX_ATTEMPTS
+		$error  = null;
+		$now    = current_time( 'mysql', true );
+
 		foreach ( $ids as $order_id ) {
-			$order = wc_get_order( $order_id );
-			if ( ! $order ) {
-				continue;
+			// One order that cannot be built (a plugin's hook throwing on it, a
+			// broken item) must not hold up the rest of the batch: it counts a
+			// failed try, and the others are written.
+			try {
+				$this->collect_row_update( (int) $order_id, $columns, $live_rows, $now, $writes, $owners, $pushed, $done );
+			} catch ( \Throwable $e ) {
+				Brikpanel_Sheets_Logger::log( 'orders', 'Row update skipped order ' . (int) $order_id . ': ' . $e->getMessage() );
+				$failed[ (int) $order_id ] = true;
+				$error                     = $e;
 			}
-			$row_map = $order->get_meta( self::META_ROW_MAP );
-			$row_map = is_array( $row_map ) ? $row_map : [];
-
-			if ( ! empty( $live_rows ) ) {
-				$expected = isset( $live_rows[ (int) $order_id ] ) ? $live_rows[ (int) $order_id ] : [];
-				sort( $expected );
-				$stored = array_values( array_map( 'intval', $row_map ) );
-				sort( $stored );
-
-				if ( $expected !== $stored ) {
-					if ( empty( $expected ) ) {
-						// The order is no longer anywhere in the tab (row deleted,
-						// tab wiped by hand). Writing to its old numbers would
-						// clobber whoever sits there now. Drop the mapping and let
-						// the normal flush re-append it.
-						Brikpanel_Sheets_Logger::log(
-							'orders',
-							'Order ' . $order_id . ' is no longer in the sheet; clearing its stored rows so the next sync re-adds it instead of overwriting another order.'
-						);
-						$order->delete_meta_data( self::META_ROW_MAP );
-						$order->delete_meta_data( self::META_SYNCED_AT );
-						$order->save();
-						continue;
-					}
-					// Rows moved. Re-map this order's line items onto where they
-					// actually live now, in the same order build_rows emits them.
-					$rebuilt = [];
-					$i       = 0;
-					foreach ( array_keys( $row_map ) as $line_item_id ) {
-						if ( isset( $expected[ $i ] ) ) {
-							$rebuilt[ (string) $line_item_id ] = (int) $expected[ $i ];
-						}
-						$i++;
-					}
-					if ( ! empty( $rebuilt ) ) {
-						$row_map = $rebuilt;
-						$order->update_meta_data( self::META_ROW_MAP, $row_map );
-						$order->save();
-					}
-				}
-			}
-			if ( empty( $row_map ) ) {
-				continue;
-			}
-			$tab = (string) $order->get_meta( self::META_TAB );
-			if ( $tab === '' ) {
-				$tab = self::tab_name();
-			}
-			$rows = $this->build_rows( $order, $columns );
-
-			foreach ( $rows as $line_item_id => $row ) {
-				// Only update rows we actually pushed in the original sync.
-				// If a line item was added after the initial sync, it has no
-				// row_map entry — we skip it here (the realtime/bulk flow
-				// will pick it up on its next pass). Index-based fallback is
-				// a footgun: if any item was deleted the indexes drift and we
-				// overwrite the wrong order's rows.
-				$sheet_row = (int) ( $row_map[ (string) $line_item_id ] ?? 0 );
-				if ( $sheet_row <= 0 ) {
-					continue;
-				}
-				$end_col = self::col_letter( count( $row ) );
-				$range = Brikpanel_Sheets_Client::a1_quote_tab( $tab ) . '!A' . $sheet_row . ':' . $end_col . $sheet_row;
-				try {
-					$client->values_update( $config['spreadsheet_id'], $range, [ $row ] );
-				} catch ( Brikpanel_Sheets_Exception $e ) {
-					Brikpanel_Sheets_Logger::log( 'orders', 'Update failed for order ' . $order_id . ': ' . $e->getMessage(), $e->http_code );
-					throw $e; // surface to AS so retry kicks in
-				}
-			}
-			// Record what we just pushed so the reverse pull can distinguish
-			// "sheet edit happened" from "sheet still shows stale value waiting
-			// for us to update_rows". Update timestamp too so the conflict
-			// guard knows the sheet is now in sync with this Woo state.
-			$order->update_meta_data( self::META_LAST_PUSHED_STATUS, (string) $order->get_status() );
-			$order->update_meta_data( self::META_SYNCED_AT, current_time( 'mysql', true ) );
-			$order->save();
 		}
+
+		foreach ( array_chunk( $writes, 500, true ) as $chunk ) {
+			try {
+				$client->values_batch_update( $config['spreadsheet_id'], $chunk );
+			} catch ( Brikpanel_Sheets_Exception $e ) {
+				Brikpanel_Sheets_Logger::log( 'orders', 'Row update failed: ' . $e->getMessage(), $e->http_code );
+				$error = $e;
+				// Only a rejected payload (HTTP 400) can be one bad row worth
+				// isolating. Rate limits and outages were already retried inside
+				// the client; sending each row on its own would hit the same wall.
+				foreach ( $chunk as $range => $values ) {
+					if ( 400 === (int) $e->http_code ) {
+						try {
+							$client->values_update( $config['spreadsheet_id'], $range, $values );
+							continue;
+						} catch ( Brikpanel_Sheets_Exception $e2 ) {
+							$error = $e2;
+						}
+					}
+					$failed[ $owners[ $range ] ] = true;
+				}
+			}
+		}
+
+		$landed = array_diff_key( $pushed, $failed );
+		if ( $landed ) {
+			self::persist_sync_meta( $landed, [ self::META_LAST_PUSHED_STATUS, self::META_SYNCED_AT ] );
+		}
+
+		return [
+			'done'   => array_values( array_diff( array_merge( $done, array_keys( $landed ) ), array_keys( $failed ) ) ),
+			'failed' => array_map( 'intval', array_keys( $failed ) ),
+			'error'  => $failed ? $error : null,
+		];
+	}
+
+	/**
+	 * One order's part of a row update: its rows go into $writes, or it lands
+	 * in $done when there is nothing to write.
+	 *
+	 * @param int    $order_id
+	 * @param array  $columns
+	 * @param array  $live_rows order_id => sheet rows, read once per batch.
+	 * @param string $now       UTC mysql time of this batch.
+	 * @param array  $writes    A1 range => [ row ], appended to.
+	 * @param array  $owners    A1 range => order id, appended to.
+	 * @param array  $pushed    order id => meta to record once written, appended to.
+	 * @param int[]  $done      appended to.
+	 * @return void
+	 */
+	private function collect_row_update( $order_id, array $columns, array $live_rows, $now, array &$writes, array &$owners, array &$pushed, array &$done ) {
+		$order = wc_get_order( $order_id );
+		if ( ! $order ) {
+			$done[] = (int) $order_id;
+			return;
+		}
+		$row_map = $order->get_meta( self::META_ROW_MAP );
+		$row_map = is_array( $row_map ) ? $row_map : [];
+
+		if ( ! empty( $live_rows ) ) {
+			$expected = isset( $live_rows[ (int) $order_id ] ) ? $live_rows[ (int) $order_id ] : [];
+			sort( $expected );
+			$stored = array_values( array_map( 'intval', $row_map ) );
+			sort( $stored );
+
+			if ( $expected !== $stored ) {
+				if ( empty( $expected ) ) {
+					// The order is no longer anywhere in the tab (row deleted,
+					// tab wiped by hand). Writing to its old numbers would
+					// clobber whoever sits there now. Drop the mapping and let
+					// the normal flush re-append it.
+					Brikpanel_Sheets_Logger::log(
+						'orders',
+						'Order ' . $order_id . ' is no longer in the sheet; clearing its stored rows so the next sync re-adds it instead of overwriting another order.'
+					);
+					$order->delete_meta_data( self::META_ROW_MAP );
+					$order->delete_meta_data( self::META_SYNCED_AT );
+					$order->save();
+					$done[] = (int) $order_id;
+					return;
+				}
+				// Rows moved. Re-map this order's line items onto where they
+				// actually live now, in the same order build_rows emits them.
+				$rebuilt = [];
+				$i       = 0;
+				foreach ( array_keys( $row_map ) as $line_item_id ) {
+					if ( isset( $expected[ $i ] ) ) {
+						$rebuilt[ (string) $line_item_id ] = (int) $expected[ $i ];
+					}
+					$i++;
+				}
+				if ( ! empty( $rebuilt ) ) {
+					$row_map = $rebuilt;
+					$order->update_meta_data( self::META_ROW_MAP, $row_map );
+					$order->save();
+				}
+			}
+		}
+		if ( empty( $row_map ) ) {
+			$done[] = (int) $order_id;
+			return;
+		}
+		$tab = (string) $order->get_meta( self::META_TAB );
+		if ( $tab === '' ) {
+			$tab = self::tab_name();
+		}
+		$rows = $this->build_rows( $order, $columns );
+
+		$any = false;
+		foreach ( $rows as $line_item_id => $row ) {
+			// Only update rows we actually pushed in the original sync.
+			// If a line item was added after the initial sync, it has no
+			// row_map entry — we skip it here (the realtime/bulk flow
+			// will pick it up on its next pass). Index-based fallback is
+			// a footgun: if any item was deleted the indexes drift and we
+			// overwrite the wrong order's rows.
+			$sheet_row = (int) ( $row_map[ (string) $line_item_id ] ?? 0 );
+			if ( $sheet_row <= 0 ) {
+				continue;
+			}
+			$end_col = self::col_letter( count( $row ) );
+			$range   = Brikpanel_Sheets_Client::a1_quote_tab( $tab ) . '!A' . $sheet_row . ':' . $end_col . $sheet_row;
+			$writes[ $range ] = [ $row ];
+			$owners[ $range ] = (int) $order_id;
+			$any              = true;
+		}
+		if ( ! $any ) {
+			$done[] = (int) $order_id;
+			return;
+		}
+		// Recorded once the rows landed, so the reverse pull can tell "the
+		// sheet was edited" from "the sheet still waits for this update",
+		// and its conflict guard knows the sheet now matches this state.
+		// Written directly with the rest of the batch: a full order save
+		// per order (every plugin's save hooks) only to store two values
+		// was most of what a bulk status change cost.
+		$pushed[ (int) $order_id ] = [
+			self::META_LAST_PUSHED_STATUS => (string) $order->get_status(),
+			self::META_SYNCED_AT          => $now,
+		];
 	}
 
 	// =========================================================================
@@ -621,19 +902,7 @@ class Brikpanel_Sheets_Order_Sync {
 		$status_col = (int) $col_map['order_status'];
 
 		$client = new Brikpanel_Sheets_Client();
-		$range  = Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] )
-			. '!A2:' . self::col_letter( count( $columns ) );
-
-		try {
-			// UNFORMATTED_VALUE, matching the products pull: cell formatting must
-			// not change what we read. Under FORMATTED_VALUE an order id styled
-			// with a thousands separator comes back as "12,345" and casts to 12.
-			// Status cells are text either way, so nothing is lost here.
-			$rows = $client->values_get( $config['spreadsheet_id'], $range, 'UNFORMATTED_VALUE' );
-		} catch ( Brikpanel_Sheets_Exception $e ) {
-			Brikpanel_Sheets_Logger::log( 'orders', 'pull values_get failed: ' . $e->getMessage(), $e->http_code );
-			throw $e;
-		}
+		$rows   = $this->read_pull_columns( $client, $config, $columns, $col_map );
 
 		$checked    = 0;
 		$applied    = 0;
@@ -749,9 +1018,34 @@ class Brikpanel_Sheets_Order_Sync {
 			}
 		}
 
+		// What the store holds for every order in the sheet, in two queries per
+		// thousand orders. Until 3.3.49 each order was loaded in full here, on
+		// every poll, whether its row had changed or not: 1,677 orders cost
+		// 4,095 queries and 20 MB a poll on the test store, all to find out
+		// that nothing had changed. Now an order is only loaded when its row
+		// asks for a status the store does not have yet.
+		$stored      = self::pull_prefetch( array_keys( $by_order ) );
+		$order_types = function_exists( 'wc_get_order_types' ) ? (array) wc_get_order_types() : [];
+		$unknown     = []; // order_id => texts nobody recognises
+		$disagree    = []; // order_id => statuses its rows show
+		$woo_newer   = []; // order ids WooCommerce changed after the last push
+
+		// Orders waiting for their rows to be rewritten. Their cells show a
+		// status the store has already moved past: it changed in WooCommerce,
+		// or one of their rows was just applied and the other rows still show
+		// the old status. Read now, those old cells look like a fresh edit and
+		// undo the change (seen with one row per line item: the next poll put
+		// the order back). They wait for the rewrite, which follows in seconds.
+		$waiting = self::read_update_queue();
+		foreach ( array_keys( self::$pending_updates ) as $pending_id ) {
+			$waiting[ (string) $pending_id ] = 0;
+		}
+
 		foreach ( $by_order as $order_id => $seen ) {
-			$order = wc_get_order( $order_id );
-			if ( ! $order ) { continue; }
+			if ( isset( $waiting[ (string) $order_id ] ) ) {
+				continue;
+			}
+			$known = isset( $stored[ $order_id ] ) ? $stored[ $order_id ] : null;
 
 			// The id column is merchant-editable, so it can point at something
 			// that is not a plain order. Two of those are actively dangerous:
@@ -762,51 +1056,47 @@ class Brikpanel_Sheets_Order_Sync {
 			//   - A trashed order still loads, and set_status() happily
 			//     transitions OUT of trash — a stale row would silently
 			//     resurrect an order the merchant deleted.
-			if ( ! $order instanceof WC_Order || $order->has_status( 'trash' ) ) {
+			// An id with no order behind it (deleted since, or never one) has
+			// nothing to apply to, exactly like wc_get_order() returning false.
+			if ( null === $known || 'shop_order_refund' === $known['type'] || 'trash' === $known['status'] ) {
+				continue;
+			}
+			$order = null;
+			if ( 'shop_order' === $known['type'] ) {
+				$current_status = $known['status'];
+				$last_pushed    = $known['last_pushed'];
+			} elseif ( in_array( $known['type'], $order_types, true ) ) {
+				// Another order type (a subscription, a plugin's own): read it
+				// the way WooCommerce does, as before.
+				$order = wc_get_order( $order_id );
+				if ( ! $order instanceof WC_Order || $order->has_status( 'trash' ) ) {
+					continue;
+				}
+				$current_status = (string) $order->get_status();
+				$last_pushed    = (string) $order->get_meta( self::META_LAST_PUSHED_STATUS );
+			} else {
 				continue;
 			}
 
-			$current_status = (string) $order->get_status();
-			$last_pushed    = (string) $order->get_meta( self::META_LAST_PUSHED_STATUS );
-			$candidates     = array_keys( $seen['statuses'] );
-
-			if ( empty( $candidates ) ) {
+			$verdict = self::resolve_sheet_status( $seen, $last_pushed );
+			if ( 'unknown' === $verdict['reason'] ) {
 				// Every row of this order carries something WooCommerce does not
 				// recognise. Surface it: the merchant sees their text sitting in
 				// the sheet and needs to know why nothing happened.
-				Brikpanel_Sheets_Logger::log(
-					'orders',
-					'Pull skipped order ' . $order_id . ': unknown status "'
-						. implode( '", "', array_keys( $seen['unknown'] ) ) . '"'
-				);
+				$unknown[ $order_id ] = array_keys( $seen['unknown'] );
 				continue;
 			}
-
-			// Rows still carrying what we last pushed are untouched siblings,
-			// not edits. Drop them so one edited row is not out-voted by the
-			// rest of its span.
-			if ( count( $candidates ) > 1 && $last_pushed !== '' ) {
-				$edited = array_values( array_diff( $candidates, [ $last_pushed ] ) );
-				if ( ! empty( $edited ) ) {
-					$candidates = $edited;
-				}
-			}
-
-			if ( count( $candidates ) > 1 ) {
+			if ( 'disagree' === $verdict['reason'] ) {
 				// Two different statuses typed on two rows of the same order (or
 				// a legacy order with no snapshot to compare against). Picking
 				// one would be a coin flip that silently changes the store, so
 				// refuse and tell the merchant instead.
 				$conflicts++;
-				Brikpanel_Sheets_Logger::log(
-					'orders',
-					'Pull skipped order ' . $order_id . ': rows disagree ("'
-						. implode( '", "', $candidates ) . '"). Make every row of the order show the same status.'
-				);
+				$disagree[ $order_id ] = $verdict['candidates'];
 				continue;
 			}
 
-			$sheet_status = (string) $candidates[0];
+			$sheet_status = (string) $verdict['status'];
 
 			$checked++;
 
@@ -817,6 +1107,25 @@ class Brikpanel_Sheets_Order_Sync {
 				// Sheet still shows what we last pushed; this is a Woo-side
 				// change that update_rows hasn't caught up to. Don't apply.
 				continue;
+			}
+
+			// A real edit. Only now is the order loaded, and what it says wins
+			// over the batch read: it may have changed in between.
+			if ( null === $order ) {
+				$order = wc_get_order( $order_id );
+				if ( ! $order instanceof WC_Order || $order->has_status( 'trash' ) ) {
+					continue;
+				}
+				$current_status = (string) $order->get_status();
+				$last_pushed    = (string) $order->get_meta( self::META_LAST_PUSHED_STATUS );
+				$verdict        = self::resolve_sheet_status( $seen, $last_pushed );
+				if ( null === $verdict['status'] ) {
+					continue;
+				}
+				$sheet_status = (string) $verdict['status'];
+				if ( $current_status === $sheet_status || ( $last_pushed !== '' && $sheet_status === $last_pushed ) ) {
+					continue;
+				}
 			}
 
 			// Conflict guard: did Woo modify after our last push?
@@ -836,9 +1145,9 @@ class Brikpanel_Sheets_Order_Sync {
 			// concurrent edits slip past.
 			if ( $last_push_ts > 0 && $woo_modified_ts > ( $last_push_ts + 10 ) ) {
 				$conflicts++;
-				Brikpanel_Sheets_Logger::log( 'orders', 'Pull conflict for order ' . $order_id . ': Woo modified after last push; re-pushing row.' );
+				$woo_newer[] = (int) $order_id;
 				// Re-push this row so the sheet catches up to Woo.
-				Brikpanel_Cron::enqueue_async( self::HOOK_UPDATE_ROWS, [ 'order_ids' => [ $order_id ] ] );
+				self::queue_row_update( $order_id );
 				continue;
 			}
 
@@ -894,6 +1203,30 @@ class Brikpanel_Sheets_Order_Sync {
 			$applied++;
 		}
 
+		// One line per kind per poll, not one per order: the log keeps the last
+		// 100 lines, and a sheet with a few hundred unreadable cells used to
+		// rewrite the whole log once per order on every poll, pushing out the
+		// line that explained why syncing stopped. A summary that stays the
+		// same poll after poll is folded into one line by the logger.
+		if ( $unknown ) {
+			self::log_order_summary(
+				'Pull skipped %d order(s) whose rows show a status WooCommerce does not know: %s. Pick a status from the dropdown in the Order status column.',
+				$unknown
+			);
+		}
+		if ( $disagree ) {
+			self::log_order_summary(
+				'Pull skipped %d order(s) whose rows show different statuses: %s. Make every row of an order show the same status.',
+				$disagree
+			);
+		}
+		if ( $woo_newer ) {
+			self::log_order_summary(
+				'Pull left %d order(s) as they are because they changed in WooCommerce after their last push: %s. Their rows are being rewritten from the store.',
+				array_fill_keys( $woo_newer, [] )
+			);
+		}
+
 		update_option( self::OPT_LAST_PULL, [
 			'ts'        => time(),
 			'checked'   => $checked,
@@ -914,6 +1247,229 @@ class Brikpanel_Sheets_Order_Sync {
 		}
 
 		return [ 'checked' => $checked, 'applied' => $applied, 'conflicts' => $conflicts ];
+	}
+
+	/**
+	 * The cells the pull needs, shaped like rows of the whole tab.
+	 *
+	 * Only the order id, status and line item columns are downloaded (one
+	 * values:batchGet), and each row comes back keyed by the column's position
+	 * in the tab, so the code reading `$row[ $pid_col ]` sees what a full read
+	 * would have given it. Falls back to reading the whole tab if Google
+	 * rejects the request itself (HTTP 400).
+	 *
+	 * @param Brikpanel_Sheets_Client $client
+	 * @param array                   $config  { spreadsheet_id, tab }
+	 * @param string[]                $columns
+	 * @param array<string, int>      $col_map
+	 * @return array<int, array<int, scalar>>
+	 */
+	private function read_pull_columns( $client, array $config, array $columns, array $col_map ) {
+		$tab    = Brikpanel_Sheets_Client::a1_quote_tab( $config['tab'] );
+		$wanted = [];
+		foreach ( [ 'order_id', 'order_status', 'line_item_id' ] as $key ) {
+			if ( isset( $col_map[ $key ] ) ) {
+				$wanted[ (int) $col_map[ $key ] ] = true;
+			}
+		}
+		$positions = array_keys( $wanted );
+		$ranges    = [];
+		foreach ( $positions as $pos ) {
+			$letter   = self::col_letter( $pos + 1 );
+			$ranges[] = $tab . '!' . $letter . '2:' . $letter;
+		}
+
+		// UNFORMATTED_VALUE, matching the products pull: cell formatting must
+		// not change what we read. Under FORMATTED_VALUE an order id styled
+		// with a thousands separator comes back as "12,345" and casts to 12.
+		// Status cells are text either way, so nothing is lost here.
+		try {
+			$cols = $client->values_batch_get( $config['spreadsheet_id'], $ranges, 'UNFORMATTED_VALUE', 'COLUMNS' );
+		} catch ( Brikpanel_Sheets_Exception $e ) {
+			if ( 400 !== (int) $e->http_code ) {
+				Brikpanel_Sheets_Logger::log( 'orders', 'pull values_get failed: ' . $e->getMessage(), $e->http_code );
+				throw $e;
+			}
+			try {
+				return $client->values_get( $config['spreadsheet_id'], $tab . '!A2:' . self::col_letter( count( $columns ) ), 'UNFORMATTED_VALUE' );
+			} catch ( Brikpanel_Sheets_Exception $e2 ) {
+				Brikpanel_Sheets_Logger::log( 'orders', 'pull values_get failed: ' . $e2->getMessage(), $e2->http_code );
+				throw $e2;
+			}
+		}
+
+		$rows = [];
+		foreach ( $positions as $i => $pos ) {
+			$cells = isset( $cols[ $i ][0] ) && is_array( $cols[ $i ][0] ) ? $cols[ $i ][0] : [];
+			foreach ( $cells as $r => $cell ) {
+				if ( '' === $cell || null === $cell ) {
+					continue;
+				}
+				$rows[ $r ][ $pos ] = $cell;
+			}
+		}
+		ksort( $rows );
+		return $rows;
+	}
+
+	/**
+	 * Type, status and last pushed status of these orders, straight from the
+	 * order tables: { order_id => [ type, status (no "wc-"), last_pushed ] }.
+	 * An id with no order row is absent.
+	 *
+	 * @param int[] $ids
+	 * @return array<int, array{type: string, status: string, last_pushed: string}>
+	 */
+	private static function pull_prefetch( array $ids ) {
+		global $wpdb;
+		$out = [];
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $ids ), static function ( $id ) {
+			return $id > 0;
+		} ) ) );
+		if ( empty( $ids ) ) {
+			return $out;
+		}
+		$hpos = brikpanel_wc_hpos_enabled();
+		foreach ( array_chunk( $ids, 1000 ) as $chunk ) {
+			$ph = implode( ',', array_fill( 0, count( $chunk ), '%d' ) );
+			if ( $hpos ) {
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound.
+				$orders = $wpdb->get_results( $wpdb->prepare( "SELECT id, type, status FROM {$wpdb->prefix}wc_orders WHERE id IN ({$ph})", $chunk ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound.
+				$meta = $wpdb->get_results( $wpdb->prepare( "SELECT order_id AS oid, meta_value FROM {$wpdb->prefix}wc_orders_meta WHERE meta_key = %s AND order_id IN ({$ph}) ORDER BY id ASC", array_merge( [ self::META_LAST_PUSHED_STATUS ], $chunk ) ) );
+			} else {
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound.
+				$orders = $wpdb->get_results( $wpdb->prepare( "SELECT ID AS id, post_type AS type, post_status AS status FROM {$wpdb->posts} WHERE ID IN ({$ph})", $chunk ) );
+				// phpcs:ignore WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- placeholders built from counts, values bound.
+				$meta = $wpdb->get_results( $wpdb->prepare( "SELECT post_id AS oid, meta_value FROM {$wpdb->postmeta} WHERE meta_key = %s AND post_id IN ({$ph}) ORDER BY meta_id ASC", array_merge( [ self::META_LAST_PUSHED_STATUS ], $chunk ) ) );
+			}
+			foreach ( (array) $orders as $o ) {
+				$out[ (int) $o->id ] = [
+					'type'        => (string) $o->type,
+					'status'      => (string) preg_replace( '/^wc-/', '', (string) $o->status ),
+					'last_pushed' => '',
+				];
+			}
+			$first = [];
+			foreach ( (array) $meta as $m ) {
+				$oid = (int) $m->oid;
+				// The first value wins, as WC_Data::get_meta() reads it.
+				if ( isset( $out[ $oid ] ) && ! isset( $first[ $oid ] ) ) {
+					$out[ $oid ]['last_pushed'] = (string) $m->meta_value;
+					$first[ $oid ]              = true;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * The status an order's rows ask for.
+	 *
+	 * Rows still carrying what we last pushed are untouched siblings, not
+	 * edits, so they are dropped when another row says something else: one
+	 * edited row is not out-voted by the rest of its span.
+	 *
+	 * @param array  $seen        { statuses: set, unknown: set } of the order's rows.
+	 * @param string $last_pushed
+	 * @return array{status: ?string, reason: ?string, candidates: string[]}
+	 *               reason 'unknown' (no row readable) or 'disagree' (two statuses).
+	 */
+	private static function resolve_sheet_status( array $seen, $last_pushed ) {
+		$candidates = array_keys( (array) $seen['statuses'] );
+		if ( empty( $candidates ) ) {
+			return [ 'status' => null, 'reason' => 'unknown', 'candidates' => [] ];
+		}
+		if ( count( $candidates ) > 1 && $last_pushed !== '' ) {
+			$edited = array_values( array_diff( $candidates, [ $last_pushed ] ) );
+			if ( ! empty( $edited ) ) {
+				$candidates = $edited;
+			}
+		}
+		if ( count( $candidates ) > 1 ) {
+			return [ 'status' => null, 'reason' => 'disagree', 'candidates' => $candidates ];
+		}
+		return [ 'status' => (string) $candidates[0], 'reason' => null, 'candidates' => $candidates ];
+	}
+
+	/**
+	 * One log line about several orders: the first ten by number, with what
+	 * their rows show, and how many more.
+	 *
+	 * @param string                  $format  sprintf format with %d (count) and %s (list).
+	 * @param array<int, string[]>    $orders  order_id => values to quote (may be empty).
+	 * @return void
+	 */
+	private static function log_order_summary( $format, array $orders ) {
+		ksort( $orders );
+		$parts = [];
+		foreach ( array_slice( $orders, 0, 10, true ) as $oid => $values ) {
+			$values  = array_values( array_unique( array_map( 'strval', (array) $values ) ) );
+			sort( $values );
+			$parts[] = '#' . (int) $oid . ( $values ? ' ("' . implode( '", "', $values ) . '")' : '' );
+		}
+		$more = count( $orders ) - count( $parts );
+		$list = implode( ', ', $parts ) . ( $more > 0 ? ' and ' . $more . ' more' : '' );
+		Brikpanel_Sheets_Logger::log( 'orders', sprintf( $format, count( $orders ), $list ) );
+	}
+
+	/**
+	 * Forget every cached copy of these orders after their meta was written
+	 * straight into the table.
+	 *
+	 * WooCommerce caches an order's meta under its own keys, and has since 4.7:
+	 * the meta list in the "orders" group under a prefixed key, and with HPOS
+	 * caching on, the raw meta and the order object in groups of their own.
+	 * Deleting the bare order id from "orders" (what this file used to do) hit
+	 * none of them. Without a persistent object cache that only mattered inside
+	 * one request; with Redis or Memcached the stale copy outlived the request,
+	 * so the next status change read an order "not synced yet" and its row in
+	 * the sheet never got the new status.
+	 *
+	 * @param int[] $order_ids
+	 * @return void
+	 */
+	private static function forget_cached_orders( array $order_ids ) {
+		$ids = array_values( array_unique( array_filter( array_map( 'intval', $order_ids ), static function ( $id ) {
+			return $id > 0;
+		} ) ) );
+		if ( empty( $ids ) ) {
+			return;
+		}
+		$order_cache = null;
+		if ( function_exists( 'wc_get_container' ) && class_exists( '\Automattic\WooCommerce\Caches\OrderCache' ) ) {
+			try {
+				$order_cache = wc_get_container()->get( \Automattic\WooCommerce\Caches\OrderCache::class );
+			} catch ( \Throwable $e ) {
+				$order_cache = null;
+			}
+		}
+		$meta_key_fn = method_exists( 'WC_Data', 'generate_meta_cache_key' );
+		foreach ( $ids as $id ) {
+			wp_cache_delete( $id, 'orders' );
+			wp_cache_delete( $id, 'orders-meta' );
+			wp_cache_delete( $id, 'post_meta' );
+			if ( $meta_key_fn ) {
+				wp_cache_delete( WC_Data::generate_meta_cache_key( $id, 'orders' ), 'orders' );
+			}
+			if ( $order_cache && method_exists( $order_cache, 'remove' ) ) {
+				try {
+					$order_cache->remove( $id );
+				} catch ( \Throwable $e ) {
+					// A cache that cannot drop an entry is no reason to fail the sync.
+					unset( $e );
+				}
+			}
+		}
+		if ( brikpanel_wc_hpos_enabled() && class_exists( 'WC_Data_Store' ) ) {
+			try {
+				$store = WC_Data_Store::load( 'order' );
+				// Proxied by WC_Data_Store::__call(); a no-op on versions without it.
+				$store->clear_cached_data( $ids );
+			} catch ( \Throwable $e ) {
+				unset( $e );
+			}
+		}
 	}
 
 	/**
@@ -1597,14 +2153,7 @@ class Brikpanel_Sheets_Order_Sync {
 		}
 
 		// Direct writes bypass the data store, so evict the cached orders.
-		foreach ( $order_ids as $order_id ) {
-			if ( $hpos ) {
-				wp_cache_delete( $order_id, 'orders' );
-				wp_cache_delete( $order_id, 'orders-meta' );
-			} else {
-				wp_cache_delete( $order_id, 'post_meta' );
-			}
-		}
+		self::forget_cached_orders( $order_ids );
 
 		self::verify_sync_meta( $pending, $keys, $table, $id_col );
 	}

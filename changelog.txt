@@ -2,6 +2,44 @@
 
 This file contains the full release history of BrikPanel. The latest releases are kept in readme.txt; older versions are archived here.
 
+= 3.3.53 (2026-11-17) =
+* Tweak: **A compact Marketplaces section.** With BrikMarket, the marketplace part of the dashboard is two cards instead of three rows. "Marketplaces" shows sales, orders and average order value with their change, and marketplace sales day by day, or hour by hour for a single day. "Best sellers on marketplaces" has tabs for products and categories.
+* New: **Where your sales came from.** A ring in the Marketplaces card splits the period's sales between your website and each marketplace, with the amount and share of each. Each marketplace keeps its colour from one period to the next.
+* Fix: **Marketplace best sellers in your store's currency.** Product and category amounts were added up in each order's own currency; they are now converted like the Sales figure. Products are listed by sales instead of units sold, with the units under each.
+* Tweak: **No Chart.js on the dashboard.** The old marketplace pie was the last chart that needed it, so stores with BrikMarket load one file less too.
+* Fix: **BrikPanel on MailPoet and FluentCRM pages.** MailPoet removes other plugins' stylesheets and scripts from its pages, and FluentCRM their scripts, so BrikPanel's side menu lost its look and the top bar's menus and search stopped working there. BrikPanel now adds its own folder to their allow lists. On phones, MailPoet's header sits right under the top bar.
+
+= 3.3.52 (2026-11-14) =
+* New: **Customer returns.** Customers ask for a return from My Account, or as a guest with their order number and email. They choose the items and quantities, variations too, a reason and up to 5 photos, which are saved without their location data. It is off until you turn it on in WooCommerce → Settings → BrikPanel → Returns.
+* New: **A Returns page under Orders.** Approve or reject a request and mark the items as received. The refund uses WooCommerce's own refund, to the card when the payment method supports it, and puts the items back in stock. Waiting requests are counted in the menu and in "Needs attention"; the order screen has a Returns box and the orders list a badge.
+* New: **EU withdrawal button.** A setting turns the button into the EU's "Withdraw from contract here", with a separate confirm step. The customer gets an email with their statement and the date and time they sent it.
+* New: **Four return emails.** New request for you; request received, approved and rejected for the customer. Edit them in WooCommerce → Settings → Emails.
+* Fix: **Numbers no longer hide in closed sidebar menus.** A closed menu item shows the total of the numbers in its list, such as Dashboard for Updates or Products for Reviews. "Site management" and your own headings show the total of their items while closed. Open one and each number is back on its own row.
+* Fix: **A long customer name no longer pushes Total off the orders list.** When the table runs out of room, the customer column gives way first and the name ends with "…". Point at it to see the full name. Names that fit look exactly as before.
+
+= 3.3.51 (2026-11-13) =
+* Tweak: **The DB-IP link sits next to visitor countries.** It now ends the grey line under the globe on the Locations card's Visitors tab, and the Live visitors card while a visitor's flag shows. The line at the bottom of the dashboard is gone.
+
+= 3.3.50 (2026-11-13) =
+* New: **One signup code per email.** The signup popup gives each email address its discount code once, used or not. While the code is still valid, the popup shows it again. This is on for every store, also after this update. Setting: Cart abandonment → Email popup → "One code per email".
+* New: **Signup codes for new customers only.** A new setting, "New customers only", gives no popup code to email addresses that already have an order. The visitor is still subscribed.
+* Tweak: **No code, one clear line.** When one of these settings keeps the code back, no code email goes out and the popup says the address is not eligible. You can write that line for each language.
+* New: **"Month to date" on the dashboard.** Next to Today and 7 days, "Month to date" shows this month from the 1st to today, compared with the same days of last month.
+* Tweak: **A one-line dashboard header.** The date button shows the range you picked and opens the calendar, so the date line under the title is gone.
+* New: **A sales map for any country.** In the Locations card, a country with a map icon opens its own map, its states, provinces or regions shaded by orders, with its top regions and cities beside it. The button at the top opens the map of the country with the most orders, and on a map the country's name lists the others. World goes back to the globe. 49 countries have a map.
+* Tweak: **One Locations card.** The globe and the lists now sit side by side in one card, with the number of countries and the busiest one above them. Pointing at a country in the list turns the globe to it.
+* Fix: **A smoother globe.** The globe turns at the same speed on every screen, no longer makes the whole page redraw as countries turn away, and draws at its real size on high-resolution screens instead of four times larger. In our Firefox test, slow frames went from 39 to 0. Scrolling with the mouse over the globe now scrolls the page.
+* Fix: **A corrected address that gets its code on screen.** After "Wrong address? Edit it", a code shown on screen instead of emailed now appears in the popup, instead of a "Sent to your new address" note.
+* Fix: **Coupon codes on a Turkish dashboard.** The Coupons list and the coupon window show codes with a plain I, BRIK instead of BRİK.
+
+= 3.3.49 (2026-11-10) =
+* Tweak: **Google Sheets two-way sync is much lighter.** Each check of the sheet now loads only the orders, products and expenses whose rows changed, instead of every row. On our test store, one check of 1,208 orders ran 24 database queries instead of 5,403.
+* New: **"Manual only" for two-way sync.** On the Google Sheets page, Orders, Products and Expenses have a "Manual only" choice under "Poll interval": BrikPanel stops checking the sheet on a schedule, and "Pull now" brings your edits in. Every 5 minutes stays the default.
+* Tweak: **Bulk status changes update the sheet in one go.** Changing the status of 20 orders at once now takes one background job and 2 Google requests instead of 19 jobs and 38 requests. Rows Google refuses are tried again, up to three times.
+* Tweak: **A Google Sheets page left open stays quiet.** In a background tab, the page no longer asks your server for its status every 30 seconds. It checks once when you come back.
+* Fix: **Status changes reach the sheet with Redis or Memcached.** With a persistent object cache, an order's first status change after it was exported did not reach the sheet.
+* Fix: **Statuses set in the sheet stay.** With "One row per line item", a status you set in the sheet could be switched back by the next check, before the order's other rows were updated.
+
 = 3.3.48 (2026-11-08) =
 * New: **Phones keep a product you have not saved.** On a phone, the product screen keeps a new or draft product on the device until you save it, with its photos, also the ones still uploading in the media window. If the phone closes the app before you save (iPhones close Home Screen apps left in the background), the next new product offers it back. Restore brings it back as a draft, variations included. Nothing is saved to your store until you tap Restore.
 * New: **A stuck page says why.** When an admin page is still not ready after 15 seconds, a small box at the top shows how long it has waited, whether the wait is your server or the connection between this computer and your site, and what to try, such as turning off HTTP/3 (QUIC). A page that never arrives is explained on the next one. The timings stay in your browser.

@@ -365,7 +365,8 @@ class Brikpanel_Coupons {
                         <div class="brikpanel-cp-qe-field">
                             <label for="bpc-code"><?php esc_html_e('Coupon code', 'brikpanel'); ?></label>
                             <div class="brikpanel-cp-code-row">
-                                <input type="text" id="bpc-code" placeholder="<?php esc_attr_e('e.g. SUMMER2024', 'brikpanel'); ?>">
+                                <?php // lang="en": the box shows the code in capitals with CSS, and CSS capitals follow the page language (a Turkish dashboard wrote "BRİK"). A code is not Turkish text. ?>
+                                <input type="text" id="bpc-code" lang="en" spellcheck="false" placeholder="<?php esc_attr_e('e.g. SUMMER2024', 'brikpanel'); ?>">
                                 <button type="button" class="brikpanel-cp-btn secondary small" id="bpc-generate-code">
                                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>
                                     <?php esc_html_e('Generate', 'brikpanel'); ?>
